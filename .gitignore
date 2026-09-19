@@ -1,0 +1,97 @@
+# Environment and secrets
+.env
+.env*.local
+.env.production
+.env.staging
+*.pem
+*.key
+*.cert
+*.crt
+.secrets
+
+# Operating System
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# IDEs and Editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+
+# Node / Web (apps/web, infra, etc.)
+node_modules/
+.pnp/
+.pnp.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Next.js
+.next/
+out/
+
+# Python (apps/agent, services/scoring)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments (uv, venv, virtualenv)
+.venv/
+venv/
+ENV/
+env/
+
+# Python tooling and testing caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+
+# AWS CDK (infra/)
+cdk.out/
+.cdk.staging/
+cdk-outputs.json
+
+# Bedrock AgentCore local configs
+.bedrock_agentcore.yaml
+
+# Caches and temporary files
+*.tmp
+*.log
+.turbo/
+.cache/
+
+# Project docs (kept private, not published to public repo)
+docs/

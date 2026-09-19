@@ -1,0 +1,30 @@
+name: deploy-agent
+on:
+  push:
+    branches: [main]
+    paths: ['apps/agent/**', '.github/workflows/deploy-agent.yml']
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME || 'arn:aws:iam::<ACCOUNT_ID>:role/chaukanna-github-deploy' }}
+          aws-region: ap-northeast-1
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: astral-sh/setup-uv@v5
+      - run: npm i -g @aws/agentcore
+      - run: uv sync --frozen
+      - run: uv run pytest -q          # fixture replay gates the deploy
+      - run: agentcore deploy --agent chaukanna-drill
