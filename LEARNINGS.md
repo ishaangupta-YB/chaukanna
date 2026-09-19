@@ -7,16 +7,16 @@
 ## Phase 0: Foundations
 
 ### Member A (Voice Agent & Runtime)
-*Log your Phase 0 learnings, discoveries with Nova 2 Sonic / AgentCore setup, or tooling observations here.*
+*Agent implementation initialized using uv. Encountered standard setup structure for python-based agents using Bedrock AgentCore. Setting up standard pyproject.toml provides good baseline for the upcoming Phase 2.*
 
 ### Member B (Infrastructure, CI/CD, Data)
-*Log your Phase 0 learnings regarding AWS CDK stack setup, DynamoDB single-table schema, Amplify integration, or OIDC pipeline configurations here.*
+*Successfully scaffolded CDK infrastructure in TypeScript. Implemented the DynamoDB single-table design with GSI1, S3 artifact bucket with lifecycle rules, and Cognito User Pool. CI/CD pipelines (GitHub Actions) were drafted but require PAT workflow scope for pushing.*
 
 ### Member C (Web Frontend & Domain)
-*Log your Phase 0 learnings on Next.js 15 App Router structure, Tailwind setup, or UI component architecture here.*
+*Next.js 15 App Router initialized. Configured FlatCompat for ESLint to handle ESM compatibility with eslint-config-next. The API health route correctly uses standard Next.js route handlers.*
 
 ### Member D (Scoring, Pipeline & Integration)
-*Log your Phase 0 learnings regarding Step Functions architecture, Bedrock model evaluation, or fixture structures here.*
+*Initialized the scoring service with uv. Basic pytest smoke tests set up to validate the environment. Added placeholder interfaces for future video integration (Phase 8).*
 
 ---
 
