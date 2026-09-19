@@ -1,0 +1,37 @@
+{"text": "mera number 9876543210 hai", "trips": true, "note": "ten numerals"}
+{"text": "98765 43210", "trips": true, "note": "grouped numerals"}
+{"text": "9876-5432-1098-7654", "trips": true, "note": "card-like with hyphens"}
+{"text": "4111 1111 1111 1111", "trips": true, "note": "card-like with spaces"}
+{"text": "1234 5678 9012", "trips": true, "note": "Aadhaar-like twelve digits"}
+{"text": "९८७६५४३२१०", "trips": true, "note": "Devanagari numerals"}
+{"text": "nau aath saat chhe paanch chaar", "trips": true, "note": "romanized Hindi digit words"}
+{"text": "नौ आठ सात छह पांच चार", "trips": true, "note": "Devanagari Hindi digit words"}
+{"text": "नौ आठ सात छह पाँच चार", "trips": true, "note": "Devanagari with chandrabindu"}
+{"text": "nine eight seven six five four", "trips": true, "note": "English digit words"}
+{"text": "नाइन एट सेवन सिक्स फाइव फोर", "trips": true, "note": "English words in Devanagari"}
+{"text": "four five, six seven. eight nine", "trips": true, "note": "punctuation inside a run"}
+{"text": "ek do teen aur chaar paanch chhe", "trips": true, "note": "filler inside a run"}
+{"text": "double five triple seven two", "trips": true, "note": "double and triple"}
+{"text": "ninety eight seventy six fifty four", "trips": true, "note": "tens read in pairs"}
+{"text": "98 76 54", "trips": true, "note": "pairs of numerals"}
+{"text": "9 8 7 six five 4", "trips": true, "note": "mixed numerals and words"}
+{"text": "A B C D E 1 2 3 4 F", "trips": true, "note": "spelled PAN"}
+{"text": "mera PAN ABCDE1234F hai", "trips": true, "note": "written PAN"}
+{"text": "ramesh@okaxis", "trips": true, "note": "UPI handle"}
+{"text": "ramesh at the rate okaxis", "trips": true, "note": "UPI read aloud"}
+{"text": "रमेश एट द रेट ओकेएक्सिस", "trips": true, "note": "UPI read aloud in Devanagari"}
+{"text": "OTP hai 4 5 2", "trips": true, "note": "OTP digits"}
+{"text": "mera pin 1 2 3 4", "trips": true, "note": "PIN digits"}
+{"text": "ओटीपी चार पांच दो", "trips": true, "note": "OTP in Devanagari"}
+{"text": "haan ji", "trips": false, "note": "assent"}
+{"text": "theek hai", "trips": false, "note": "okay"}
+{"text": "main 1930 par call karungi", "trips": false, "note": "helpline must survive"}
+{"text": "meri umar 72 saal hai", "trips": false, "note": "age"}
+{"text": "mera ghar number 14 hai", "trips": false, "note": "house number"}
+{"text": "paanch lakh rupaye", "trips": false, "note": "amount in words"}
+{"text": "kal 10 baje", "trips": false, "note": "time"}
+{"text": "main apne bete ko phone karti hoon", "trips": false, "note": "independent verification"}
+{"text": "kya yeh asli call hai?", "trips": false, "note": "is this real, handled by safe word logic not tripwire"}
+{"text": "what do I do now", "trips": false, "note": "English do is not a run"}
+{"text": "no no, I will not tell you", "trips": false, "note": "a couple of noes"}
+{"text": "2024 mein", "trips": false, "note": "year"}

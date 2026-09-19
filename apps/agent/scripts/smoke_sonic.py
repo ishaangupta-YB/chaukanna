@@ -61,7 +61,9 @@ async def main() -> int:
     finally:
         pump.cancel()
         await agent.stop()
-    log.info("region=%s audio_bytes=%d seconds=%.1f transcript=%r", region, audio_bytes, audio_bytes / 32000, transcript)
+    log.info(
+        "region=%s audio_bytes=%d seconds=%.1f transcript=%r", region, audio_bytes, audio_bytes / 32000, transcript
+    )
     return 0 if audio_bytes > 0 else 1
 
 
