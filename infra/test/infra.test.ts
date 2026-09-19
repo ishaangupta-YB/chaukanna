@@ -49,6 +49,19 @@ describe('ChaukannaStack', () => {
     });
   });
 
+  test('bucket CORS allows only the app origins, never a wildcard', () => {
+    synth('https://main.example.amplifyapp.com/').hasResourceProperties('AWS::S3::Bucket', {
+      CorsConfiguration: {
+        CorsRules: [
+          Match.objectLike({
+            AllowedOrigins: ['http://localhost:3000', 'https://main.example.amplifyapp.com'],
+            AllowedHeaders: ['content-type'],
+          }),
+        ],
+      },
+    });
+  });
+
   test('user pool client allows localhost only until the app url is known', () => {
     synth().hasResourceProperties('AWS::Cognito::UserPoolClient', {
       ClientName: 'chaukanna-web-client',

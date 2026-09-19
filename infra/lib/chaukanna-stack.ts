@@ -47,6 +47,9 @@ export class ChaukannaStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // Origins of the web app: localhost for development plus the Amplify URL once it exists.
+    const appUrls = [LOCAL_APP_URL, ...(props?.appUrl ? [props.appUrl.replace(/\/+$/, '')] : [])];
+
     // 2. S3 Bucket for drill recordings, consent, and debrief artifacts
     this.artifactsBucket = new s3.Bucket(this, 'Artifacts', {
       bucketName: `chaukanna-artifacts-${cdk.Stack.of(this).account}`,
@@ -58,11 +61,13 @@ export class ChaukannaStack extends cdk.Stack {
         { prefix: 'drill/', expiration: cdk.Duration.days(7) },
         { prefix: 'debrief/', expiration: cdk.Duration.days(30) },
       ],
+      // Browsers upload with presigned PUTs from our own pages only.
       cors: [
         {
           allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET],
-          allowedOrigins: ['*'],
-          allowedHeaders: ['*'],
+          allowedOrigins: appUrls,
+          allowedHeaders: ['content-type'],
+          maxAge: 3000,
         },
       ],
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -95,8 +100,6 @@ export class ChaukannaStack extends cdk.Stack {
     });
 
     // 5. User Pool Client, public (PKCE), authorization code only
-    const appUrls = [LOCAL_APP_URL, ...(props?.appUrl ? [props.appUrl.replace(/\/+$/, '')] : [])];
-
     this.userPoolClient = this.userPool.addClient('WebClient', {
       userPoolClientName: 'chaukanna-web-client',
       generateSecret: false,
