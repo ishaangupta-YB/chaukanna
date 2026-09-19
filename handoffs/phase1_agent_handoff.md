@@ -64,8 +64,15 @@ past Phase 0 and no Amplify app exists. The gate waits only on the owner steps a
 Health route, 401 unauthenticated, 403 cross-origin, 410 on a bad or tampered invite, the full learner
 flow in a phone viewport (Hindi consent, typed fallback, window picker, kill switch, English switch),
 the voice consent path through presigned S3 PUT and HeadObject, idempotent replay, every row correct in
-DynamoDB, log lines that carry ids only, the security headers on a live page, and the bucket CORS from
-an allowed and a foreign origin.
+DynamoDB, log lines that carry ids only, the security headers on a live page, the bucket CORS from
+an allowed and a foreign origin, and a real browser presigned PUT from the page origin (200).
+
+The compute role cannot be assumed locally (it trusts `amplify.amazonaws.com`), so it was checked with
+`aws iam simulate-principal-policy` instead: every action the app performs is allowed
+(`GetItem`, `PutItem`, `UpdateItem`, `Query` on the table and GSI1, `DescribeTable`, `PutObject` and
+`GetObject` under `consent/`, `GetSecretValue` on the signing key), while `PutObject` under `drill/`
+and `DeleteTable` are denied. That is the usual "AccessDenied at runtime, not at build" pitfall closed
+before the first deploy.
 
 Not verified: the guardian screens behind Cognito. They need a real sign-up, which needs a password,
 so they are the owner's to check. The code path reviewed clean and fails closed to managed login.
