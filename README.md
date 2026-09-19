@@ -47,6 +47,17 @@ chaukanna/
 
 ## Quick Start (Local Development)
 
+### 0. Once per clone
+
+```bash
+git config core.hooksPath .githooks   # refuses commits that would leak secrets or private files
+cp .env.example apps/web/.env.local   # then fill the blanks from infra/cdk-outputs.json
+```
+
+`scripts/check-staged.sh` also runs on its own (`scripts/check-staged.sh` for what is staged,
+`scripts/check-staged.sh <ref>` for a commit). Real values belong in `.env.local`, never in a
+committed template: this repository is public.
+
 ### 1. Web Application
 
 ```bash
@@ -90,7 +101,7 @@ Prompts live in `docs/AGENT_PROMPTS.md` and are copied verbatim into
 
 - [x] **Phase 0: Foundations** — Monorepo scaffolded, CDK stack synthesized, Next.js app with `/api/health`, CI/CD workflows ready.
 - [ ] **Phase 1: Domain and Consent** — Guardian invite flow & learner consent. Built and verified locally against the deployed stack; gate waits on the Amplify deploy.
-- [ ] **Phase 2: The Agent, Locally** — Hindi drill runs end-to-end in terminal with tripwire. Built, fixture suite green, real model rehearsed; gate waits on a recorded voice run and the break character audio.
+- [ ] **Phase 2: The Agent, Locally** — Hindi drill runs end-to-end in terminal with tripwire. Built, fixture suite green, real model rehearsed; gate waits on a recorded voice run. The spoken break character line is deliberately deferred: the drill still ends on time, silently.
 - [ ] **Phase 3: The Agent, in the Browser** — Drill runs from phone browser against AgentCore.
 - [ ] **Phase 4: Drill Lifecycle** — Scheduled drill rings inside the window.
 - [ ] **Phase 5: Scoring and Debrief** — Finished drill produces a band and spoken debrief.

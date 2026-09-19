@@ -19,8 +19,18 @@ Branch `feat/phase-2-agent-local` (stacked on the Phase 1 branch). The safety co
 ## Prompts
 `docs/AGENT_PROMPTS.md` is the source. `scripts/sync_prompts.py` copies blocks into `chaukanna_agent/prompts/`, and `tests/test_prompts.py` fails on drift. Two prompts were added to the doc: `drill.kickoff.v1` (the first turn cue, since the caller speaks first) and `render.verbatim_reader.v1` (build time only).
 
-## Pending decision: break character audio (two strikes, stopped)
-`drill.break_character.v1` must play word for word, even mid sentence. Pre-rendering it with Nova `arjun` failed twice: a long read stops after 2 sentences, and a single short sentence gets answered instead of read. `scripts/render_break_character.py` is **uncommitted** until the user picks a fallback. Until then the CLI refuses to run without the audio unless you pass `--allow-missing-break-audio`, in which case the drill still ends on time but silently.
+## Decided: break character audio is deferred (do not reopen without being asked)
+`drill.break_character.v1` must play word for word, even mid sentence. Pre-rendering it with Nova
+`arjun` failed twice: a long read stops after 2 sentences, and a single short sentence gets answered
+instead of read. The owner's call, after being offered Polly and a third Nova attempt, is to **ship
+Phase 2 without the audio**. Run with `--allow-missing-break-audio`: the tripwire, the safe word and
+the cap all still end the drill on time, the drill just ends silently instead of saying the
+reassurance line. `scripts/render_break_character.py` stays **uncommitted**.
+
+What this costs, so whoever picks it up knows: a learner who trips the tripwire hears the call stop
+rather than hears why. If it is revived, the documented fallback is Amazon Polly, which reads exactly
+what it is given; Polly has no masculine Hindi voice, so the script needs a `v2` with gender neutral
+wording plus a fixture rerun. Three tests stay skipped until the asset exists.
 
 ## Tripwire classifier
 PRD section 8.2 also mentions a small classifier (`tripwire.classifier.v1`). It is not a Phase 2 task, so it was not built. Ask before adding it.
@@ -29,5 +39,6 @@ PRD section 8.2 also mentions a small classifier (`tripwire.classifier.v1`). It 
 The caller's S4 line tripped the caller limit monitor for a number run. It was stored `[redacted]` and logged as `caller_limit_violation`, and two reruns were clean. This is a possible persona slip on hard limit 2. Fix it with a versioned prompt change plus a fixture rerun, not now.
 
 ## To pass the gate
-1. Resolve the break character audio.
-2. `AWS_PROFILE=chaukanna VOICE_REGION=ap-northeast-1 uv run python -m chaukanna_agent.local --language hi-IN` with headphones: go along to S3, read six digits aloud (the drill should break character within the turn), then run again and say "roko". Save the runs with `--out ../../fixtures/recorded/<name>.json`, then run `uv run pytest`.
+Only one thing is left, and it needs a human voice and headphones:
+
+1. `AWS_PROFILE=chaukanna VOICE_REGION=ap-northeast-1 uv run python -m chaukanna_agent.local --language hi-IN --allow-missing-break-audio` with headphones: go along to S3, read six digits aloud (the drill should break character within the turn), then run again and say "roko". Save the runs with `--out ../../fixtures/recorded/<name>.json`, then run `uv run pytest`.
