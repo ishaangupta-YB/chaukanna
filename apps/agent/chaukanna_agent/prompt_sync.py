@@ -16,6 +16,7 @@ _FENCE = re.compile(r"^```[a-z]*\n(?P<body>.*?)^```", re.MULTILINE | re.DOTALL)
 SYNCED_PROMPTS = {
     "drill.persona.v1": ["drill.persona.v1.txt"],
     "drill.kickoff.v1": ["drill.kickoff.v1.txt"],
+    "render.verbatim_reader.v1": ["render.verbatim_reader.v1.txt"],
     "drill.break_character.v1": ["drill.break_character.v1.hi-IN.txt", "drill.break_character.v1.en-IN.txt"],
 }
 
@@ -54,6 +55,7 @@ def render_files(markdown: str) -> dict[str, str]:
     return {
         "drill.persona.v1.txt": blocks["drill.persona.v1"],
         "drill.kickoff.v1.txt": blocks["drill.kickoff.v1"],
+        "render.verbatim_reader.v1.txt": blocks["render.verbatim_reader.v1"],
         "drill.break_character.v1.hi-IN.txt": breaks["hi-IN"],
         "drill.break_character.v1.en-IN.txt": breaks["en-IN"],
     }

@@ -117,6 +117,17 @@ class DrillRunner:
         """The learner ended the call."""
         self.session.end("hangup", source="learner")
 
+    async def learner_text(self, text: str) -> None:
+        """A typed learner turn (rehearsals and tests). Same transport checks as speech, and it is
+        sent to the model only if those checks let the call continue."""
+        self._on_user_fragment(text)
+        self._user_turn.clear()
+        if self.session.ended.is_set():
+            return
+        self.session.add_learner_text(text)
+        if not self.session.ended.is_set():
+            await self.agent.send(text)
+
     async def run(self) -> DrillRecord:
         session = self.session
         await self.sink.start()
