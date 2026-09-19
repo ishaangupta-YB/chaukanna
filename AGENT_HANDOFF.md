@@ -1,26 +1,36 @@
 # Agent Handoff
 
-Welcome, next agent! This document provides context on what has been accomplished so far and what is expected next.
+Welcome, next agent! I have completed **Phase 0 (Foundations)**. You are taking over the repository to begin work on the next phases. Here is exactly what I implemented and how you should proceed.
 
-## Current State (Phase 0 Completed)
-- **Monorepo Scaffolded**: The repository `chaukanna` has been set up with `apps/web` (Next.js 15), `apps/agent` (Python uv), `services/scoring` (Python uv), `services/video` (Python), and `infra` (AWS CDK TS).
-- **AWS Infrastructure**: The CDK stack (`infra/lib/chaukanna-stack.ts`) has been written, covering DynamoDB (with GSI1), an S3 artifacts bucket, and a Cognito User Pool setup.
-- **CI/CD**: GitHub action workflows (`deploy-infra.yml`, `deploy-agent.yml`) are in the `.github/workflows/` directory. They were temporarily un-tracked from the remote because the user's PAT needs the `workflow` scope to push them.
-- **Web App**: Next.js app has a health check route (`/api/health`) configured.
-- **Security**: The repository has been scanned for secrets. `docs/` is explicitly `.gitignore`'d and kept private.
+## Phase 0: Foundations (What I Implemented)
 
-## Important Context & Quirks
-- **ESLint & Next.js 15**: Ran into ESM compatibility issues with Next.js 15's ESLint config. Solved by using `@eslint/eslintrc` `FlatCompat`.
-- **Node Modules / Python Venvs**: `uv` is being used for Python dependency management. Node versions and Next.js require proper paths in commands.
-- **Deployment**: The user needs to manually run `cd infra && npx cdk deploy` locally to bootstrap/deploy the stack the first time, and hook up Amplify in the console.
+I successfully passed the Phase 0 gate based on `docs/phases/PHASE_0_FOUNDATIONS.md`.
+- **Monorepo Setup**: Scaffolded the repository with `apps/web` (Next.js 15), `apps/agent` (Python uv), `services/scoring` (Python uv), `services/video` (Python placeholders), and `infra` (AWS CDK TS). 
+- **AWS CDK Infrastructure**: Created `infra/lib/chaukanna-stack.ts`. It includes:
+  - DynamoDB Table (`chaukanna`) with PAY_PER_REQUEST billing, `ttl` time-to-live attribute, and a `GSI1` index.
+  - S3 Bucket for artifacts with strict lifecycle rules (consent 365d, drill 7d, debrief 30d).
+  - Cognito User Pool, Client ID, and Domain.
+- **CI/CD**: Wrote two GitHub Action workflows (`.github/workflows/deploy-infra.yml` and `deploy-agent.yml`) per the `DEPLOYMENT.md` guide. Note: The workflows have been staged/committed but could not be pushed to remote due to the user's PAT lacking the `workflow` scope.
+- **Next.js & API Health Check**: Created the Next.js App Router and set up the `/api/health` route. It correctly responds without failing. I resolved ESM compatibility issues with Next 15's ESLint config using `@eslint/eslintrc` `FlatCompat`.
+- **Security Check passed**: I ran deep secrets scans (`grep -rIE "aws_secret|AKIA|..."`). Absolutely no real AWS Account IDs or tokens are hardcoded. `.env` and `.env.local` are explicitly in `.gitignore`. Also, `docs/` is explicitly in `.gitignore` to keep internal project documentation out of the public repo.
 
-## Next Steps (Phases 1 & 2)
-The next immediate steps based on the project documentation are:
-1. **Phase 1 (Domain & Consent)**: Likely involves setting up the Next.js frontend pages, connecting the frontend to Cognito for auth, and implementing the consent flow.
-2. **Phase 2 (Agent Local)**: Requires building the actual Bedrock AgentCore logic in `apps/agent/` and getting it running locally.
-3. Check `docs/phases/PHASE_1_DOMAIN.md` and `docs/phases/PHASE_2_AGENT_LOCAL.md` (if they exist) for specific requirements.
+## Your Immediate Tasks (Phase 1: Domain and Consent)
 
-## Instructions for Next Agent
-- **Always read the Phase docs** before starting implementation.
-- Maintain the strict security posture: **no AWS account IDs or secrets** in committed code (`.env.local` is gitignored).
-- Remember to update `LEARNINGS.md` after you finish your designated phase!
+Your next target is **Phase 1**, based on `docs/phases/PHASE_1_DOMAIN_AND_CONSENT.md`.
+
+**The Phase 1 Goal**: A guardian can sign in, create a household, invite a learner, and the learner can consent from their own phone.
+**The Phase 1 Gate**: On the deployed URL: guardian signs up, invites, opens the invite link on a phone, consents with a recorded voice line, and sets a window. All rows visible in DynamoDB.
+
+1. **Cognito Wiring**: Implement Hosted Managed Login for Cognito, verify JWTs in a small `lib/auth.ts` without using external auth libraries.
+2. **Data Access Layer**: Implement `lib/db/` with typed TypeScript helpers (`putHousehold`, `getHousehold`, `putMember`, `putConsent`, etc.) using Zod for validation.
+3. **Invite Tokens**: Implement the HMAC SHA256 based single-use invite tokens as specified in the docs.
+4. **Screens**: Build the guardian UI (household dashboard, add member) and the learner onboarding UI (invite link handler, consent page with media recorder for audio, window selector).
+5. **Update LEARNINGS**: Update the Phase 1 block in `LEARNINGS.md` after completion.
+
+## Crucial Tips for Next Agent
+- **Always read the Phase docs** before starting any implementation (e.g., `docs/phases/PHASE_1_DOMAIN_AND_CONSENT.md` or `PHASE_2_AGENT_LOCAL.md`).
+- **Never expose secrets**: Keep the security hygiene exactly as I left it. No secrets in the repo.
+- **Environment Context**: Python is managed using `uv`. Next.js is version 15.
+- The user is deploying infrastructure locally for the hackathon using `cdk deploy`. Do not assume automatic infrastructure updates via CI until the pipeline is completely set up by the user.
+
+Good luck!
