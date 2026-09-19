@@ -95,3 +95,5 @@ cdk-outputs.json
 
 # Project docs (kept private, not published to public repo)
 docs/
+# Local Claude Code session config
+.claude/

@@ -8,6 +8,11 @@ applications:
             - npm ci
         build:
           commands:
+            # Amplify console env vars reach the build only. Next.js SSR route handlers see them
+            # at runtime only if they are written to .env.production here. Non-secret values only:
+            # secrets are read from Secrets Manager by the compute role at runtime.
+            # AWS_REGION is provided by the SSR runtime itself (Amplify reserves the AWS_ prefix).
+            - for v in TABLE_NAME ARTIFACTS_BUCKET USER_POOL_ID USER_POOL_CLIENT_ID COGNITO_DOMAIN APP_URL VOICE_REGION; do if [ -z "$(printenv $v)" ]; then echo "Missing Amplify environment variable $v" && exit 1; fi; echo "$v=$(printenv $v)" >> .env.production; done
             - npm run build
       artifacts:
         baseDirectory: .next
