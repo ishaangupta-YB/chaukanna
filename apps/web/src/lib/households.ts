@@ -1,0 +1,39 @@
+import type { Guardian } from './auth';
+import { getHousehold, putHousehold, type Household } from './db';
+import { forbidden } from './errors';
+import { log } from './log';
+import { sha256Hex } from './signing';
+
+/**
+ * One household per guardian. The id is derived from the Cognito subject, so a double tap on
+ * "create" hits the same key and the conditional write turns it into a no-op.
+ */
+export function householdIdForGuardian(sub: string): string {
+  return sha256Hex(`household:${sub}`).slice(0, 20);
+}
+
+export async function createHousehold(guardian: Guardian, name: string): Promise<{ household: Household; created: boolean }> {
+  const householdId = householdIdForGuardian(guardian.sub);
+  const created = await putHousehold({
+    householdId,
+    ownerSub: guardian.sub,
+    name,
+    createdAt: new Date().toISOString(),
+  });
+  const household = await getHousehold(householdId);
+  if (!household || household.ownerSub !== guardian.sub) throw forbidden();
+  if (created) log.info('household.created', { householdId });
+  return { household, created };
+}
+
+export async function getGuardianHousehold(guardian: Guardian): Promise<Household | null> {
+  const household = await getHousehold(householdIdForGuardian(guardian.sub));
+  return household && household.ownerSub === guardian.sub ? household : null;
+}
+
+/** Default deny: the id in the URL must be the caller's own household. */
+export async function requireOwnHousehold(guardian: Guardian, householdId: string): Promise<Household> {
+  const household = await getGuardianHousehold(guardian);
+  if (!household || household.householdId !== householdId) throw forbidden();
+  return household;
+}
