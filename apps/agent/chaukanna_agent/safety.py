@@ -126,3 +126,27 @@ class StopPhrases:
         if any(_contains(tokens, p) for p in self._distress):
             return Stop("distress")
         return None
+
+
+# ---- caller limits (drill.persona.v1 hard limits 1 and 2), checked on every caller turn ----------
+
+_CALLER_LIMITS: dict[str, re.Pattern[str]] = {
+    "link": re.compile(r"https?://|www\.|\b[a-z0-9-]+\.(com|in|org|net|io|app|link)\b", re.IGNORECASE),
+    "app_install": re.compile(
+        r"\b(install|download|anydesk|teamviewer|quicksupport|apk|play store|app store)\b"
+        r"|इंस्टॉल|डाउनलोड|एनीडेस्क",
+        re.IGNORECASE,
+    ),
+    "video_call": re.compile(r"\b(video call|skype|zoom call|whatsapp video)\b|वीडियो कॉल", re.IGNORECASE),
+    "payment_handle": re.compile(r"[a-z0-9._\-]{2,}@[a-z]{2,}|\bupi id\b|\bifsc\b", re.IGNORECASE),
+}
+
+
+def caller_violations(text: str) -> list[str]:
+    """Hard limits the caller's words broke. The runner logs these; fixtures must have none."""
+    from .tripwire import trips  # local import keeps safety.py free of a cycle
+
+    found = [name for name, pattern in _CALLER_LIMITS.items() if pattern.search(text)]
+    if trips(text):
+        found.append("number_run")
+    return found

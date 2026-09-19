@@ -16,6 +16,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from .log import event
+from .safety import caller_violations
 from .tripwire import REDACTED, redact, trips
 
 STAGES = ("S0", "S1", "S2", "S3", "S4", "S5")
@@ -210,9 +211,12 @@ class DrillSession:
         self._append_line("learner", stored)
 
     def add_caller_text(self, text: str) -> None:
+        violations = caller_violations(text)
+        if violations:
+            # A prompt is not a control: surface every broken hard limit so the persona is fixed.
+            self.log("caller_limit_violation", level=logging.WARNING, limits=violations)
         stored = redact(text)
         if stored == REDACTED:
-            # The caller must never speak a number run; log it so the persona can be fixed.
             self.log("caller_turn_redacted", level=logging.WARNING)
         self._append_line("caller", stored)
 
