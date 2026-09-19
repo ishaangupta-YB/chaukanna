@@ -9,9 +9,10 @@ Hackathon build, team of 4, public repository.
 1. **Safety code before feature code.** The tripwire, the safe word, the session cap and the window check exist and are tested before the persona gets interesting.
 2. **Working beats complete.** Ship the current phase end to end before starting the next.
 3. **Stay in the active phase.** If a task is not in the active phase file, ask before building it.
-4. **Never invent an API.** If unsure of an SDK shape, a model id, or a service limit, check the docs or the AWS sample repo. Confident wrong code costs more than a question.
-5. **Two strikes then stop.** If an approach fails twice, report it and use the documented fallback.
-6. **No secrets in the repo, ever.** This repository is public. Config comes from SSM Parameter Store and Secrets Manager at runtime, or from Amplify environment variables for non secrets.
+4. **NEW AGENTS: Strictly refer to the `handoffs/` directory files.** When starting work on new or next phases, read the handoff files left by previous agents for exact context and status.
+5. **Never invent an API.** If unsure of an SDK shape, a model id, or a service limit, check the docs or the AWS sample repo. Confident wrong code costs more than a question.
+6. **Two strikes then stop.** If an approach fails twice, report it and use the documented fallback.
+7. **No secrets in the repo, ever.** This repository is public. Config comes from SSM Parameter Store and Secrets Manager at runtime, or from Amplify environment variables for non secrets.
 
 ## Stack, pinned, do not substitute
 
