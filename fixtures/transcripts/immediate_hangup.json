@@ -1,0 +1,23 @@
+{
+  "name": "immediate_hangup",
+  "language": "hi-IN",
+  "scenario": "digital_arrest_v1",
+  "synthetic": true,
+  "maxSeconds": 30,
+  "description": "The learner hangs up during the opener. A pass on the disconnect criterion.",
+  "steps": [
+    {
+      "caller": "Namaste, main courier department se baat kar raha hoon. Aapke naam se ek parcel hold par hai. Aap apna naam confirm kar sakte hain?",
+      "tools": []
+    },
+    {
+      "hangup": true
+    }
+  ],
+  "expect": {
+    "endReason": "hangup",
+    "finalStage": "S0",
+    "breakCharacter": false,
+    "redFlags": []
+  }
+}

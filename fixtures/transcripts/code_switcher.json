@@ -1,0 +1,92 @@
+{
+  "name": "code_switcher",
+  "language": "hi-IN",
+  "scenario": "digital_arrest_v1",
+  "synthetic": true,
+  "maxSeconds": 30,
+  "description": "The learner mixes English and Hindi. The model connection times out at S2 and the SDK reconnects; stage and flags must carry over. The learner names the helpline and hangs up.",
+  "steps": [
+    {
+      "caller": "Namaste, main courier department se baat kar raha hoon. Aapke naam se ek parcel hold par hai. Aap apna naam confirm kar sakte hain?",
+      "tools": []
+    },
+    {
+      "learner": "haan ji, main Kamla bol rahi hoon"
+    },
+    {
+      "caller": "Yeh matter cyber cell ke paas hai. Main aapki call transfer kar raha hoon, line par rahiye.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S1"
+          }
+        },
+        {
+          "name": "record_red_flag",
+          "input": {
+            "flag_id": "stayed_on_call",
+            "quote": "haan ji"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "theek hai"
+    },
+    {
+      "caller": "Aapke naam se ek case register hua hai. Aapko bas sahyog karna hai, ghabraiye mat.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S2"
+          }
+        },
+        {
+          "name": "record_red_flag",
+          "input": {
+            "flag_id": "accepted_authority",
+            "quote": "theek hai"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "Wait, this sounds strange. Aap kaun se office se ho?"
+    },
+    {
+      "model_timeout": true
+    },
+    {
+      "caller": "Yeh confidential matter hai. Call ke dauran kisi se discuss mat kijiye.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S3"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "No, I will first call my son. Main 1930 par bhi call karungi."
+    },
+    {
+      "hangup": true
+    }
+  ],
+  "expect": {
+    "endReason": "hangup",
+    "finalStage": "S3",
+    "breakCharacter": false,
+    "redFlags": [
+      "stayed_on_call",
+      "accepted_authority"
+    ],
+    "reconnects": 1,
+    "mustContain": [
+      "1930"
+    ]
+  }
+}

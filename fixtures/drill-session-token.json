@@ -1,0 +1,16 @@
+{
+  "_comment": "Contract between apps/web/src/lib/drill-session.ts and apps/agent/chaukanna_agent/session_token.py. The master key is a test value and signs nothing real.",
+  "masterKey": "test-master-key-not-a-real-secret",
+  "claims": {
+    "d": "d1e2f3a4b5c6d7e8f9a0",
+    "m": "abcdef0123456789abcd",
+    "h": "0123456789abcdef0123",
+    "t": "2026-09-20T11:30:00.000Z",
+    "l": "hi-IN",
+    "s": "digital_arrest_v1",
+    "x": 360,
+    "j": "9f8e7d6c5b4a39281706",
+    "exp": 4102444800
+  },
+  "token": "eyJkIjoiZDFlMmYzYTRiNWM2ZDdlOGY5YTAiLCJtIjoiYWJjZGVmMDEyMzQ1Njc4OWFiY2QiLCJoIjoiMDEyMzQ1Njc4OWFiY2RlZjAxMjMiLCJ0IjoiMjAyNi0wOS0yMFQxMTozMDowMC4wMDBaIiwibCI6ImhpLUlOIiwicyI6ImRpZ2l0YWxfYXJyZXN0X3YxIiwieCI6MzYwLCJqIjoiOWY4ZTdkNmM1YjRhMzkyODE3MDYiLCJleHAiOjQxMDI0NDQ4MDB9.lpgrdqoCbIcOjwuwFMTSn4keEgHqQXikpa0P9iczn88"
+}

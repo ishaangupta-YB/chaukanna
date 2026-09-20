@@ -1,0 +1,26 @@
+{
+  "name": "polite_refusal",
+  "language": "hi-IN",
+  "scenario": "digital_arrest_v1",
+  "synthetic": true,
+  "maxSeconds": 30,
+  "description": "The learner refuses politely and hangs up at S0.",
+  "steps": [
+    {
+      "caller": "Namaste, main courier department se baat kar raha hoon. Aapke naam se ek parcel hold par hai. Aap apna naam confirm kar sakte hain?",
+      "tools": []
+    },
+    {
+      "learner": "Nahi, maine koi parcel nahi bheja. Main phone rakh rahi hoon."
+    },
+    {
+      "hangup": true
+    }
+  ],
+  "expect": {
+    "endReason": "hangup",
+    "finalStage": "S0",
+    "breakCharacter": false,
+    "redFlags": []
+  }
+}
