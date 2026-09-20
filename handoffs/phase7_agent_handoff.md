@@ -19,6 +19,38 @@ the team can sign into.
 | CI | GitHub OIDC provider + `chaukanna-github-deploy`, trust scoped to `repo:ishaangupta-YB/chaukanna:*` | role exists; `AWS_ROLE_TO_ASSUME` repo secret unconfirmed |
 | `DEMO_MODE` | Amplify branch env var | **on** — a public auth bypass; turn it off after judging |
 
+## Read this before you deploy or record: four permission gaps
+
+A full audit of every AWS API call in the repo against every runtime role found **four grants
+missing**, all the same shape, none visible from the code, a local run, a green test suite or a
+successful deploy. All four are fixed in `infra/lib/chaukanna-stack.ts` and **none of them is
+deployed**.
+
+| Role | Missing | What breaks without it |
+|---|---|---|
+| Amplify compute | `dynamodb:BatchGetItem` | `/app` and `/app/audit` **500** for any household that has run a drill |
+| Amplify compute | `verifiedpermissions:BatchIsAuthorized` | the dashboard's authorization call |
+| Scoring debrief | `s3:GetObject` on `drill/redacted/*` | **every drill ends with a band and silence** |
+| Ring Lambda | `dynamodb:PutItem` (scoped to `DRILL#*`) | ring throws after flipping the drill, EventBridge retries, audit log loses a row per drill |
+
+The two web ones now have code fallbacks, so those screens work either way. **The other two do
+not and cannot** — a Lambda that may not read a file cannot work around it.
+
+```bash
+cd infra
+AWS_PROFILE=chaukanna AWS_REGION=ap-south-1 npx cdk diff ChaukannaStack    # four IAM adds, nothing else
+AWS_PROFILE=chaukanna AWS_REGION=ap-south-1 npx cdk deploy ChaukannaStack
+```
+
+`test/infra.test.ts` now pins every runtime role to the calls its handler makes, scoped per role
+— the unscoped version of that test passes on a *different* role's identical grant and would have
+missed the debrief one entirely.
+
+Why none of this was caught: local runs and CI use a developer identity that can call everything;
+an empty demo household exercises none of the batch paths; and the scoring pipeline had never
+executed at all. **Exercise the deployed system with data in it.** "It works on the deployed URL"
+and "it works for an account that has done something" are different claims.
+
 ## The one real risk before you record
 
 **The scoring pipeline has never run.** Not once, not in staging, not with a fixture. Every part
@@ -118,12 +150,12 @@ that records a grandmother's voice.
 
 ## Two things to do before you publish anything
 
-1. **Turn `DEMO_MODE` off** on the Amplify branch once judging is over. It is a well-built bypass
+1. **Deploy the four IAM grants** (above). Two of them have no code workaround: without them
+   there is no spoken debrief and the ring Lambda errors on every scheduled drill.
+2. **Turn `DEMO_MODE` off** on the Amplify branch once judging is over. It is a well-built bypass
    — fresh random identity per click, a `demo-` key space a Cognito subject cannot address, a
    2 hour TTL — but it is still an unauthenticated route into a real deployment.
-2. **Deploy the IAM grant** in `infra/lib/chaukanna-stack.ts`
-   (`dynamodb:BatchGetItem`, `verifiedpermissions:BatchIsAuthorized`). Not required — the code
-   falls back — but it turns one request per drill back into one per screen.
+
 
 ## Test data left behind
 

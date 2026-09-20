@@ -71,6 +71,12 @@ aws iam simulate-principal-policy \
 Both call sites now fall back to the singular form when the batch action is denied, so the
 screens work under either configuration. **The CDK grant is fixed but not deployed** — see below.
 
+The same audit found two more gaps with no possible code workaround: the **scoring debrief**
+Lambda could not read the redacted transcript it quotes (so every drill would end with a band and
+silence), and the **ring** Lambda could not write its own audit row (so it threw after flipping
+the drill, and EventBridge retried). Both are fixed in CDK and covered by
+`infra/test/infra.test.ts`. See `handoffs/phase7_agent_handoff.md`.
+
 ## The one thing still owed
 
 `infra/lib/chaukanna-stack.ts` now grants `dynamodb:BatchGetItem` and
