@@ -104,7 +104,7 @@ export function DrillCall({ drillId, lang }: { drillId: string; lang: Lang }) {
         )}
         {/* The learner's own words, on the learner's own device, for the length of the call. */}
         <div className="min-h-24 rounded-2xl bg-stone-100 p-5">
-          <p className="text-lg text-stone-600">{t(lang, 'drillYouSaid')}</p>
+          <p className="text-xl text-stone-600">{t(lang, 'drillYouSaid')}</p>
           <p aria-live="polite" className="text-2xl">
             {state.caption}
           </p>
@@ -125,7 +125,7 @@ export function DrillCall({ drillId, lang }: { drillId: string; lang: Lang }) {
     <section className="flex flex-1 flex-col gap-6">
       <h1 className="text-3xl font-bold">{t(lang, 'drillRingingTitle')}</h1>
       <p className="text-2xl text-stone-700">{t(lang, 'drillRingingCaller')}</p>
-      <p className="text-lg text-stone-600">{t(lang, 'drillHeadphones')}</p>
+      <p className="text-xl text-stone-600">{t(lang, 'drillHeadphones')}</p>
       <div className="mt-auto flex flex-col gap-3">
         <button
           type="button"

@@ -1,5 +1,6 @@
 import { resolveMember } from '@/lib/access';
 import { agentSessionId, presignAgentSocket } from '@/lib/agentcore';
+import { buildDrillResource, buildLearnerPrincipal, requireAuthz, VP_ACTIONS } from '@/lib/authz';
 import { config } from '@/lib/config';
 import { getDrill } from '@/lib/db';
 import { drillSessionClaims, signDrillSessionToken } from '@/lib/drill-session';
@@ -23,6 +24,10 @@ import { randomId } from '@/lib/signing';
  *
  * The drill is looked up inside the caller's own member row, so an id belonging to another
  * household is a 404 and never a 403: ids cannot be probed.
+ *
+ * Taking the call is itself an authorized act. `TakeDrill` is permitted only to the member the
+ * drill was created for, so the policy — not the lookup — is what stands between a learner
+ * session and somebody else's practice call.
  */
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -34,6 +39,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const drill = await getDrill(member.memberId, id);
     if (!drill) throw notFound();
+
+    await requireAuthz(
+      buildLearnerPrincipal(member.memberId, member.householdId, member.status),
+      VP_ACTIONS.TAKE_DRILL,
+      buildDrillResource(drill.drillId, drill.householdId, drill.memberId, member.transcriptSharing),
+    );
 
     try {
       await guardDrillStart(member, drill, new Date());

@@ -42,7 +42,7 @@ export function StopAllButton({ lang, memberId, token }: { lang: Lang; memberId?
         {state === 'working' ? t(lang, 'stopping') : t(lang, 'stopAll')}
       </button>
       {state === 'error' && (
-        <p role="alert" className="text-lg text-red-800">
+        <p role="alert" className="text-xl text-red-800">
           {t(lang, 'errorGeneric')}
         </p>
       )}

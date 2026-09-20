@@ -20,13 +20,13 @@ export function LearnerShell({
         {switchHref && (
           <Link
             href={switchHref}
-            className="inline-flex min-h-12 items-center rounded-xl border-2 border-stone-400 px-4 text-lg font-medium"
+            className="inline-flex min-h-12 items-center rounded-xl border-2 border-stone-400 px-4 text-xl font-medium"
           >
             {t(lang, 'switchLanguage')}
           </Link>
         )}
       </header>
-      <p className="self-start rounded-full bg-emerald-100 px-4 py-1 text-lg font-semibold text-emerald-900">
+      <p className="self-start rounded-full bg-emerald-100 px-4 py-1 text-xl font-semibold text-emerald-900">
         {t(lang, 'practiceBadge')}
       </p>
       <div className="flex flex-1 flex-col gap-8">{children}</div>

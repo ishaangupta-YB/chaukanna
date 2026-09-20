@@ -44,7 +44,7 @@ export function SharingToggle({ lang, memberId, sharing }: { lang: Lang; memberI
       </button>
       {!on && <p className="text-xl text-stone-600">{t(lang, 'homeSharingHelp')}</p>}
       {state === 'error' && (
-        <p role="alert" className="text-lg text-red-800">
+        <p role="alert" className="text-xl text-red-800">
           {t(lang, 'errorGeneric')}
         </p>
       )}

@@ -143,17 +143,17 @@ export function Debrief({ lang, initial }: { lang: Lang; initial: DebriefView })
       ) : (
         <>
           <section className="flex flex-col gap-2 rounded-2xl bg-emerald-50 p-5">
-            <h2 className="text-lg font-semibold text-emerald-900">{t(lang, 'debriefWentWellLabel')}</h2>
+            <h2 className="text-xl font-semibold text-emerald-900">{t(lang, 'debriefWentWellLabel')}</h2>
             <p className="text-2xl text-emerald-900">{t(lang, wentWellKey(view.credits))}</p>
           </section>
 
-          {!view.audioUrl && <p className="text-lg text-stone-600">{t(lang, 'debriefAudioMissing')}</p>}
+          {!view.audioUrl && <p className="text-xl text-stone-600">{t(lang, 'debriefAudioMissing')}</p>}
 
           {view.debriefText && <p className="whitespace-pre-line text-2xl leading-relaxed">{view.debriefText}</p>}
 
           {view.turningPoint && (
             <section className="flex flex-col gap-3 rounded-2xl border-2 border-amber-700 bg-amber-50 p-5">
-              <h2 className="text-lg font-semibold text-amber-900">{t(lang, 'debriefTurningPointLabel')}</h2>
+              <h2 className="text-xl font-semibold text-amber-900">{t(lang, 'debriefTurningPointLabel')}</h2>
               <blockquote className="text-2xl font-semibold text-amber-950">“{view.turningPoint}”</blockquote>
               <p className="text-xl text-amber-900">{t(lang, 'debriefTurningPointHint')}</p>
             </section>
@@ -161,7 +161,7 @@ export function Debrief({ lang, initial }: { lang: Lang; initial: DebriefView })
 
           {view.flags.length > 0 && (
             <section className="flex flex-col gap-3">
-              <h2 className="text-lg font-semibold text-stone-700">{t(lang, 'debriefNoticedLabel')}</h2>
+              <h2 className="text-xl font-semibold text-stone-700">{t(lang, 'debriefNoticedLabel')}</h2>
               <ul className="flex flex-col gap-3">
                 {view.flags.map((flag) => (
                   <li key={flag.id} className="rounded-2xl bg-stone-100 p-5">
@@ -201,7 +201,7 @@ function PlayButton({ lang, url }: { lang: Lang; url: string }) {
   const [playing, setPlaying] = useState(false);
   const [broken, setBroken] = useState(false);
 
-  if (broken) return <p className="text-lg text-stone-600">{t(lang, 'debriefAudioMissing')}</p>;
+  if (broken) return <p className="text-xl text-stone-600">{t(lang, 'debriefAudioMissing')}</p>;
 
   return (
     <div className="flex flex-col gap-2">

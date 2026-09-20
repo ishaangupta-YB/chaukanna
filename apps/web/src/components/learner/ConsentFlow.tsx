@@ -136,7 +136,7 @@ export function ConsentFlow({ lang, token, memberId }: { lang: Lang; token?: str
   return (
     <section className="flex flex-col gap-6">
       <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-5">
-        <p className="text-lg text-stone-700">{t(lang, 'consentSayThis')}</p>
+        <p className="text-xl text-stone-700">{t(lang, 'consentSayThis')}</p>
         <p className="mt-2 text-2xl font-bold">&ldquo;{t(lang, 'consentSentence')}&rdquo;</p>
       </div>
 
@@ -176,8 +176,8 @@ export function ConsentFlow({ lang, token, memberId }: { lang: Lang; token?: str
             void confirmTyped();
           }}
         >
-          <p className="text-lg">{t(lang, 'consentMicDenied')}</p>
-          <label className="flex flex-col gap-2 text-lg font-semibold">
+          <p className="text-xl">{t(lang, 'consentMicDenied')}</p>
+          <label className="flex flex-col gap-2 text-xl font-semibold">
             {t(lang, 'consentTypedLabel')}
             <input
               value={typed}
@@ -190,7 +190,7 @@ export function ConsentFlow({ lang, token, memberId }: { lang: Lang; token?: str
             />
           </label>
           {typedInvalid && (
-            <p role="alert" className="text-lg text-red-800">
+            <p role="alert" className="text-xl text-red-800">
               {t(lang, 'consentTypedInvalid')}
             </p>
           )}
@@ -202,7 +202,7 @@ export function ConsentFlow({ lang, token, memberId }: { lang: Lang; token?: str
 
       {step === 'error' && (
         <div className="flex flex-col gap-4">
-          <p role="alert" className="text-lg text-red-800">
+          <p role="alert" className="text-xl text-red-800">
             {t(lang, 'errorGeneric')}
           </p>
           <button

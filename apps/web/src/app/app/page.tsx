@@ -7,6 +7,7 @@ import { MemberActions } from '@/components/guardian/MemberActions';
 import { istDateTime, learnerProgress, nextScheduled } from '@/lib/dashboard';
 import { getLatestConsent, listDrills, listMembers, listScores, type Member } from '@/lib/db';
 import { toGuardianBand } from '@/lib/debrief';
+import { authorizedDrills } from '@/lib/guardian-view';
 import { getGuardianHousehold } from '@/lib/households';
 import { windowSummary } from '@/lib/i18n';
 import { windowOrDefault } from '@/lib/members';
@@ -40,12 +41,24 @@ export default async function GuardianDashboard() {
   const members = await listMembers(household.householdId);
   const rows = await Promise.all(
     members.map(async (m) => {
-      const drills = await listDrills(m.memberId, HISTORY);
+      /*
+       * Cedar decides which of these the guardian may see the outcome of, before anything is
+       * read about them. Everything below — the trend, the weakest tactic, the next call, the
+       * band list — is derived from the authorized list only, so the policy is what shapes the
+       * card rather than a filter applied to it afterwards.
+       */
+      const { drills, available } = await authorizedDrills(
+        guardian.sub,
+        household.householdId,
+        m,
+        await listDrills(m.memberId, HISTORY),
+      );
       // One batched read for the whole card rather than one per drill. Bands only: what the
       // scoring pipeline wrote about what was *said* never leaves `toGuardianBand`.
       const scores = await listScores(drills.map((drill) => drill.drillId));
       return {
         member: m,
+        outcomesAvailable: available,
         window: (await windowOrDefault(m.memberId)).window,
         consent: m.status === 'invited' ? null : await getLatestConsent(m.memberId),
         // The instant a scheduled drill will ring, shown because a random time nobody can see is
@@ -77,7 +90,7 @@ export default async function GuardianDashboard() {
       {rows.length === 0 && <p className="rounded-2xl border border-dashed border-stone-400 p-6">No one invited yet.</p>}
 
       <ul className="flex flex-col gap-4">
-        {rows.map(({ member, window, consent, scheduled, progress, history }) => (
+        {rows.map(({ member, outcomesAvailable, window, consent, scheduled, progress, history }) => (
           <li key={member.memberId} className="flex flex-col gap-3 rounded-2xl border border-stone-300 bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-bold">{member.displayName}</h2>
@@ -107,12 +120,27 @@ export default async function GuardianDashboard() {
               )}
             </dl>
 
-            <section className="flex flex-col gap-2 border-t border-stone-200 pt-3">
-              <h3 className="text-base font-semibold text-stone-700">How it is going</h3>
-              <LearnerProgress progress={progress} name={member.displayName} />
-            </section>
+            {/*
+              Said plainly rather than rendered as an empty card. A guardian whose household has
+              practised before must not be shown "no practice calls yet" because an authorization
+              call failed: default deny is the right answer, and this is what that answer looks
+              like when it is honest about itself.
+            */}
+            {!outcomesAvailable && (
+              <p role="alert" className="rounded-2xl border border-amber-500 bg-amber-50 p-4 text-base text-amber-900">
+                Outcomes cannot be shown right now: the permission check did not answer, so nothing
+                has been released. Reload in a moment.
+              </p>
+            )}
 
-            {history.length > 0 && (
+            {outcomesAvailable && (
+              <section className="flex flex-col gap-2 border-t border-stone-200 pt-3">
+                <h3 className="text-base font-semibold text-stone-700">How it is going</h3>
+                <LearnerProgress progress={progress} name={member.displayName} />
+              </section>
+            )}
+
+            {outcomesAvailable && history.length > 0 && (
               <section className="flex flex-col gap-2 border-t border-stone-200 pt-3">
                 <h3 className="text-base font-semibold text-stone-700">Recent practice calls</h3>
                 <ul className="flex flex-col gap-2">

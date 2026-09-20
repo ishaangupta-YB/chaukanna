@@ -1,7 +1,10 @@
 import {
+  BatchIsAuthorizedCommand,
   IsAuthorizedCommand,
   VerifiedPermissionsClient,
   type AttributeValue,
+  type BatchIsAuthorizedInputItem,
+  type EntityItem,
   type IsAuthorizedCommandInput,
 } from '@aws-sdk/client-verifiedpermissions';
 import { config } from './config';
@@ -138,4 +141,90 @@ export function buildDrillResource(
 
 export function buildMemberResource(memberId: string, householdId: string, status: string): VPResource {
   return { type: 'Member', id: memberId, attributes: { memberId, householdId, status } };
+}
+
+/*
+ * Batch authorization, for the screens that read a list.
+ *
+ * The dashboard holds a guardian's whole history at once, and one `IsAuthorized` per drill would
+ * be a round trip per row. `BatchIsAuthorized` asks the same questions against the same policies
+ * in a single call, and the answers are still Cedar's, one per drill.
+ */
+
+/** Verified Permissions caps a batch at 30 requests. */
+const BATCH_LIMIT = 30;
+
+export interface VPQuery {
+  action: VPAction;
+  resource: VPResource;
+}
+
+/** `ViewBand|drill-id`, the key a result is filed under so order is never relied upon. */
+function queryKey(action: string, resourceId: string): string {
+  return `${action}|${resourceId}`;
+}
+
+function toEntityItem(entity: VPPrincipal | VPResource): EntityItem {
+  return { identifier: toEntity(entity), attributes: toAttributes(entity.attributes) };
+}
+
+/**
+ * The subset of `queries` this principal is allowed, as `action|resourceId` keys.
+ *
+ * Default deny is preserved in the strongest form available to a list: a resource is in the set
+ * only on an explicit ALLOW, so an evaluation error, a missing result or a short response leaves
+ * it out. A failure of the call itself throws, exactly as `requireAuthz` does, because a caller
+ * that quietly rendered an empty list would be reporting "no practice calls" when what happened
+ * is "we could not ask".
+ */
+export async function authorizedQueries(principal: VPPrincipal, queries: VPQuery[]): Promise<Set<string>> {
+  const allowed = new Set<string>();
+  if (queries.length === 0) return allowed;
+
+  for (let from = 0; from < queries.length; from += BATCH_LIMIT) {
+    const chunk = queries.slice(from, from + BATCH_LIMIT);
+    /*
+     * `entities` is shared by every request in the batch, and an entity repeated in that list is
+     * rejected as a duplicate, so each identifier is contributed once however many rows use it.
+     */
+    const entities = new Map<string, EntityItem>();
+    entities.set(principal.id, toEntityItem(principal));
+    for (const { resource } of chunk) entities.set(resource.id, toEntityItem(resource));
+
+    const requests: BatchIsAuthorizedInputItem[] = chunk.map(({ action, resource }) => ({
+      principal: toEntity(principal),
+      action: { actionType: VP_ACTION_TYPE, actionId: action },
+      resource: toEntity(resource),
+    }));
+
+    let results;
+    try {
+      results = (
+        await getVPClient().send(
+          new BatchIsAuthorizedCommand({
+            policyStoreId: config.policyStoreId,
+            entities: { entityList: [...entities.values()] },
+            requests,
+          }),
+        )
+      ).results;
+    } catch (error) {
+      log.error('authz.batch_unavailable', { count: chunk.length, principalId: principal.id, ...errorFields(error) });
+      throw forbidden('authz_unavailable');
+    }
+
+    for (const result of results ?? []) {
+      // Filed by the request the service echoed back, not by position: a decision is only ever
+      // attributed to the drill it was actually made about.
+      const resourceId = result.request?.resource?.entityId;
+      const actionId = result.request?.action?.actionId;
+      if (result.decision === 'ALLOW' && resourceId && actionId) allowed.add(queryKey(actionId, resourceId));
+    }
+  }
+  return allowed;
+}
+
+/** Reads a `authorizedQueries` result for one resource. */
+export function isAllowed(allowed: Set<string>, action: VPAction, resourceId: string): boolean {
+  return allowed.has(queryKey(action, resourceId));
 }

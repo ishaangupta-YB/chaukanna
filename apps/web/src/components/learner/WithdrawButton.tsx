@@ -28,7 +28,7 @@ export function WithdrawButton({ lang, memberId }: { lang: Lang; memberId: strin
         {t(lang, 'homeWithdraw')}
       </button>
       {state === 'error' && (
-        <p role="alert" className="text-lg text-red-800">
+        <p role="alert" className="text-xl text-red-800">
           {t(lang, 'errorGeneric')}
         </p>
       )}

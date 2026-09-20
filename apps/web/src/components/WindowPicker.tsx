@@ -68,7 +68,7 @@ export function WindowPicker({
                 type="button"
                 aria-pressed={on}
                 onClick={() => toggle(day)}
-                className={`min-h-14 rounded-xl border-2 text-lg font-semibold ${
+                className={`min-h-14 rounded-xl border-2 text-xl font-semibold ${
                   on ? 'border-emerald-800 bg-emerald-700 text-white' : 'border-stone-400 bg-white text-stone-800'
                 }`}
               >
@@ -116,20 +116,20 @@ export function WindowPicker({
         </label>
       </div>
 
-      <p className="text-lg text-stone-700">{t(lang, 'windowHelp')}</p>
+      <p className="text-xl text-stone-700">{t(lang, 'windowHelp')}</p>
 
       {state === 'invalid' && (
-        <p role="alert" className="text-lg text-red-800">
+        <p role="alert" className="text-xl text-red-800">
           {t(lang, 'windowInvalid')}
         </p>
       )}
       {state === 'error' && (
-        <p role="alert" className="text-lg text-red-800">
+        <p role="alert" className="text-xl text-red-800">
           {t(lang, 'errorGeneric')}
         </p>
       )}
       {state === 'saved' && (
-        <p role="status" className="text-lg font-semibold text-emerald-800">
+        <p role="status" className="text-xl font-semibold text-emerald-800">
           {t(lang, 'windowSaved')}
         </p>
       )}

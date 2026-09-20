@@ -15,6 +15,11 @@ const REFUSAL: Record<string, string> = {
   outside_window: 'It is outside the hours they chose. Change the hours, or wait.',
   weekly_cap: 'They have already had a practice call in the last seven days.',
   ring_too_soon: 'You rang them a few minutes ago. Give it ten minutes.',
+  // Cedar refused. On a guardian's own dashboard the only policy that forbids scheduling is the
+  // one that reads `status == "paused"`, so this is the kill switch answering, from the policy
+  // store rather than from a branch in the route.
+  authz_denied: 'Policy refused this. Practice calls are stopped for them.',
+  authz_unavailable: 'The permission check could not run, so nothing was started. Try again.',
 };
 
 /** New invite link, schedule, ring now, and the guardian's own kill switch for one member. */
