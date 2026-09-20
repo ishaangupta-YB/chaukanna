@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import type { Principals } from './access';
-import { GUARDIAN_COOKIE, verifyGuardianToken, verifyGuardianTokenWithRevocation, type Guardian } from './auth';
+import { GUARDIAN_COOKIE, verifyGuardianTokenWithRevocation, type Guardian } from './auth';
 import { config } from './config';
 import { DEMO_COOKIE, demoGuardianFrom, readDemoSession, type DemoSession } from './demo';
 import { unauthorized } from './errors';
