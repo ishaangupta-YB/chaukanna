@@ -12,7 +12,7 @@ interface WindowValue {
   tz: 'Asia/Kolkata';
 }
 
-const HOURS = Array.from({ length: 15 }, (_, i) => `${String(i + 7).padStart(2, '0')}:00`); // 07:00 .. 21:00
+const HOURS = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`); // 00:00 .. 23:00
 
 /** Weekly window picker shared by the learner (Hindi first) and the guardian. Times are IST. */
 export function WindowPicker({
