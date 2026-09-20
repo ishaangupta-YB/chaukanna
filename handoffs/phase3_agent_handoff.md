@@ -113,8 +113,11 @@ just slower than the target.
 
 Everything below needs a person and a phone. Nothing else is outstanding.
 
-1. Phase 1 is still unpushed and there is no Amplify app. See `handoffs/phase1_agent_handoff.md`.
+1. ~~Phase 1 is still unpushed~~ — all three branches are now on GitHub and PR #1 is open. There
+   is still **no Amplify app**. See `handoffs/phase1_agent_handoff.md`.
 2. Add `AGENT_RUNTIME_ARN` to the Amplify environment variables alongside the Phase 1 five.
+   Guardians now sign in with Google, so `chaukanna/google-oauth` must be filled and the stack
+   redeployed before anybody can reach `/app` on the deployed URL either.
 3. On a real phone on mobile data: take a full Hindi drill, read six digits aloud, and confirm the
    tripwire ends it. Then a second drill and say "roko".
 4. Kill the wifi mid-call and confirm the screen explains itself rather than freezing.
@@ -133,6 +136,14 @@ cd ../../infra && AGENT_IMAGE=$REPO:$(git rev-parse --short HEAD) npx cdk deploy
 
 `AGENT_IMAGE` is an environment variable and **never** goes in `cdk.json`: an ECR URI contains the
 account id and this repository is public.
+
+## Local testing, the two things that will stop you
+
+- The seeded "Test Dadi" household is owned by `local-e2e-test-sub`, a scripted subject. A real
+  Google sign-in gets a different `sub`, so that member is **invisible** on `/app`; create your own
+  household and member instead.
+- A new member's window defaults to the PRD's Mon-Fri 11:00-18:00 IST, so Ring now is refused with
+  `outside_window` at every other hour. Widen the window first.
 
 ## Test data left behind
 

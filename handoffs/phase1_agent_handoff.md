@@ -14,6 +14,8 @@ past Phase 0 and no Amplify app exists. The gate waits only on the owner steps a
 - Cognito **newer managed login** plus a `ManagedLoginBranding` (without it the login page is empty).
   Public PKCE client. Domain prefix is `chaukanna-<stack uuid head>`, so no account id appears in
   login URLs.
+- **Guardians sign in with Google and nothing else** (revised after Phase 3; see the auth section
+  below). There is no password anywhere in Chaukanna.
 - Callback URLs: `http://localhost:3000/api/auth/callback` always, plus `<appUrl>/api/auth/callback`
   from the CDK context key `chaukanna:appUrl` (set it in `infra/cdk.json` once the Amplify URL
   exists, then redeploy).
@@ -30,7 +32,9 @@ past Phase 0 and no Amplify app exists. The gate waits only on the owner steps a
 ### Web (`apps/web`)
 - `src/lib/`: all business logic, unit tested with vitest (`npm test`, 58 tests).
   - `auth.ts` verifies Cognito ID tokens with `node:crypto` against the JWKS. No auth library.
-    `auth-flow.ts` handles the code exchange.
+    `auth-flow.ts` handles the code exchange. `startOAuth` names `identity_provider=Google` so
+    managed login does not show a chooser for a single button; it is not a control, the pool
+    refuses every other provider regardless of the query string.
   - `invite.ts` signed tokens `{m,h,exp}`, 72 h, with sha256 stored on the member row.
     `learner-session.ts` is the learner cookie; its key is derived separately from the invite key.
   - `db/` holds every DynamoDB call, with zod models. `access.ts` is the Phase 1 default-deny access
@@ -46,6 +50,47 @@ past Phase 0 and no Amplify app exists. The gate waits only on the owner steps a
   everywhere (product rule 7) and grants the microphone to our own origin, framing is denied,
   `Referrer-Policy: no-referrer` because invite tokens live in the URL path, plus nosniff and HSTS.
   Verified in the browser: `featurePolicy.allowsFeature('camera')` is false, `microphone` is true.
+
+## Auth, revised: Google only
+
+Replaces the email-and-password sign-up this phase originally shipped. Nobody sets a password in
+Chaukanna: learners never have an account, and the pool now holds federated identities only.
+
+**Why not an auth library.** CLAUDE.md pins Cognito managed login and forbids adding one. Google
+SSO is an identity *provider* on the existing pool, not a second auth stack, so PKCE, the JWKS
+verification and the household id derived from `sub` are all untouched. Better Auth would also have
+wanted to own sessions and a users table, and this app deliberately has neither.
+
+**What the stack does now** (`infra/lib/chaukanna-stack.ts` section 5):
+- `UserPoolIdentityProviderGoogle`, scopes `openid email profile`, mapping `email`,
+  `email_verified` and `name`. `email_verified` is carried so the pool never holds an address
+  Google itself has not verified.
+- The client lists `Google` and **not** `COGNITO`. That is what removes the password form and the
+  sign-up link from managed login; there is no native path hidden behind a UI choice. `authFlows`
+  is empty, so `ALLOW_USER_SRP_AUTH` is gone from the template.
+- `selfSignUpEnabled: false` and `accountRecovery: NONE`, which synthesise to
+  `AllowAdminCreateUserOnly: true` and `admin_only`. Neither affects federation, which provisions
+  its users through a different path.
+- The client `DependsOn` the provider. Cognito rejects a client naming a provider that does not
+  exist yet and CloudFormation cannot infer the order from `supportedIdentityProviders` alone.
+
+**The credentials.** `chaukanna/google-oauth` in Secrets Manager holds
+`{"clientId": ..., "clientSecret": ...}`. The stack references both by **secret name** as
+CloudFormation dynamic references, so neither value is in this repository and neither appears in a
+synthesised template. Two traps:
+
+- `Secret.fromSecretNameV2(...).secretValue` builds a *full ARN* out of the synthesising
+  environment's region and account, so `cdk synth` without a profile produced a `us-east-1` ARN.
+  `cdk.SecretValue.secretsManager(name, { jsonField })` emits the bare name and is correct
+  wherever it is synthesised. `infra/test` pins the rendered reference.
+- **Dynamic references resolve at deploy time, not at run time.** Editing the secret changes
+  nothing until `cdk deploy` runs again.
+
+Google's authorised redirect URI is the pool's own `/oauth2/idpresponse` endpoint, never a URL of
+ours. Full setup is `docs/AWS_SETUP.md` step 10.
+
+`cdk diff` before deploying showed **no resource replacement**: the pool, the domain and the client
+all update in place, so the pool id, client id and Cognito domain in `.env.local` stay valid.
 
 ## Decisions worth knowing
 - One household per guardian. Its id is `sha256("household:"+sub)[:20]`, which makes create idempotent.
@@ -74,8 +119,9 @@ The compute role cannot be assumed locally (it trusts `amplify.amazonaws.com`), 
 and `DeleteTable` are denied. That is the usual "AccessDenied at runtime, not at build" pitfall closed
 before the first deploy.
 
-Not verified: the guardian screens behind Cognito. They need a real sign-up, which needs a password,
-so they are the owner's to check. The code path reviewed clean and fails closed to managed login.
+Not verified: the guardian screens behind Cognito. They need a real Google sign-in, which needs the
+OAuth client and the secret to exist, so they are the owner's to check. The code path reviewed clean
+and fails closed to managed login.
 
 ## Secrets and PII
 - `scripts/check-staged.sh` runs as a pre-commit hook (`git config core.hooksPath .githooks`, once per
@@ -89,8 +135,11 @@ so they are the owner's to check. The code path reviewed clean and fails closed 
   without the hook would. Restore those lines before pushing if you want belt and braces.
 
 ## To pass the gate (account owner)
-1. Push the branch (the PAT needs `workflow` scope, because the branch history contains the workflow
-   files), then merge to `main`.
+1. ~~Push the branch, then merge to `main`.~~ **Done.** All three phase branches are on GitHub and
+   PR #1 (`feat/phase-3-agent-browser` into `main`) is open. Merge it and Amplify can be pointed at
+   `main`. A classic PAT needs **both** `repo` and `workflow`; `workflow` alone cannot push at all.
+   If a push is rejected for the workflow scope despite a correct token, the repo-local
+   `credential.helper=osxkeychain` is serving an older cached one.
 2. Amplify console, `ap-south-1`: new app from GitHub, `main`, monorepo root `apps/web`. Service role:
    let Amplify create it. **Compute role: `chaukanna-amplify-compute-role`.**
 3. Amplify env vars from `infra/cdk-outputs.json`: `TABLE_NAME, ARTIFACTS_BUCKET, USER_POOL_ID,
@@ -98,7 +147,8 @@ so they are the owner's to check. The code path reviewed clean and fails closed 
    a custom domain.
 4. Put the Amplify URL in `infra/cdk.json` context `"chaukanna:appUrl"`, then redeploy the stack. This
    is what adds the Amplify origin to both the Cognito callback URLs and the bucket CORS.
-5. On a real phone: sign up, create household, invite, open the link, consent by voice, set a window.
+5. On a real phone: sign in with Google, create household, invite, open the link, consent by voice,
+   set a window.
    Check rows with the query in `docs/phases/PHASE_1_DOMAIN_AND_CONSENT.md`.
 
 ## Test data left in the table

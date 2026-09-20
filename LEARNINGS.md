@@ -44,6 +44,30 @@
 
 ---
 
+## Auth revision: Google sign-in (spans Phase 1)
+
+### Member C (Web Frontend & Domain)
+*Replacing email-and-password sign-up with Google turned out to be a stack question rather than an
+auth question: CLAUDE.md pins Cognito managed login and forbids adding an auth library, and Google
+SSO is an identity provider on the pool we already had, not a second auth stack, so PKCE, the JWKS
+verification and the household id derived from the Cognito subject needed no changes at all. Better
+Auth would have been the expensive answer to a question we were not asking, because it wants to own
+sessions and a users table and this app deliberately has neither. What actually removes the password
+is dropping `COGNITO` from the client's supported identity providers; leaving it there and simply not
+linking to it would have left a working password form one URL away, so the test asserts the rendered
+list is exactly `['Google']` and that `ExplicitAuthFlows` is absent. Two Secrets Manager traps cost
+real time. `Secret.fromSecretNameV2(...).secretValue` builds a full ARN from the *synthesising*
+environment's region, so a synth without a profile quietly produced a `us-east-1` ARN for a secret
+living in Mumbai; `SecretValue.secretsManager(name, { jsonField })` emits the bare name and is right
+wherever it runs. And a CloudFormation dynamic reference resolves at deploy time, not at run time,
+which means rotating the Google client secret does nothing at all until the stack is deployed again
+— the opposite of the runtime-secret intuition every other secret in this repo trains you to have.
+The last lesson was not code: a push kept being rejected for a missing `workflow` scope while the
+token demonstrably had it, because a repo-local `credential.helper=osxkeychain` was serving an older
+cached token and `GIT_ASKPASS` is only consulted when the helper has nothing to say.*
+
+---
+
 ## Phase 4: Drill Lifecycle
 <!-- To be populated upon completion of Phase 4 -->
 
