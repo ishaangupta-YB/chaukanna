@@ -101,6 +101,8 @@ export function toMinutes(hhmm: string): number {
  *
  *   scheduled ──(the ring Lambda fires)──▶ due ──(a session token is minted)──▶ session_pending
  *   session_pending ──(the agent claims it, once)──▶ in_progress ──(the call ends)──▶ ended
+ *   ended ──(the scoring pipeline finished)──▶ scored
+ *   ended ──(redaction, the judge or the rubric failed)──▶ score_failed
  *   due | session_pending ──(nobody answered in 30 minutes)──▶ missed
  *   scheduled | due | session_pending ──(consent revoked, paused, declined)──▶ cancelled
  *
@@ -112,6 +114,11 @@ export function toMinutes(hhmm: string): number {
  * the weekly cap because their phone did ring, a cancelled one does not because nobody was called.
  * The only transition the agent performs is `session_pending` to `in_progress`, and it is a
  * conditional write, which is what makes a session token single use.
+ *
+ * `scored` and `score_failed` are terminal and reachable only from `ended`, written by the
+ * scoring state machine's `finish` task. They are two outcomes of the same pipeline, not a good
+ * one and a bad one: `score_failed` means the machine could not read the call, never that the
+ * learner did badly. A drill that is `ended` and not yet either is simply still being scored.
  */
 export const DrillState = z.enum([
   'scheduled',
@@ -119,6 +126,8 @@ export const DrillState = z.enum([
   'session_pending',
   'in_progress',
   'ended',
+  'scored',
+  'score_failed',
   'cancelled',
   'missed',
 ]);
@@ -191,6 +200,87 @@ export const Drill = z.object({
   audioKey: z.string().max(256).optional(),
 });
 export type Drill = z.infer<typeof Drill>;
+
+/**
+ * The scoring Lambdas run on stdlib and boto3 with no pydantic, so they build the item by hand
+ * and write `{"S": ""}` for a field they had no value for rather than leaving the attribute out
+ * (see `services/scoring/scoring_service/finish.py`). An empty string is therefore the pipeline's
+ * way of saying "absent", and it has to parse as absent here — otherwise one blank version string
+ * would throw on read and take the learner's whole debrief down with it.
+ */
+function blankIsAbsent<T extends z.ZodType>(schema: T) {
+  return z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+}
+
+export const ScoreBand = z.enum(['safe', 'wobbly', 'at_risk']);
+export type ScoreBand = z.infer<typeof ScoreBand>;
+
+export const ScoreStatus = z.enum(['scored', 'score_failed']);
+export type ScoreStatus = z.infer<typeof ScoreStatus>;
+
+/**
+ * One thing the judge model was asked to classify, and the line it read it from. The evidence is
+ * a quote from the *guardrail-redacted* transcript, and it belongs to the learner alone.
+ */
+export const JudgeMark = z.object({
+  fired: z.boolean(),
+  evidence: z.string().max(2000).optional(),
+});
+export type JudgeMark = z.infer<typeof JudgeMark>;
+
+/**
+ * The scoring pipeline's verdict on one drill: `pk = DRILL#<drillId>`, `sk = SCORE`.
+ *
+ * The web app **only ever reads** this row. Every field on it is written by the Step Functions
+ * tasks in `services/scoring`, which is why nothing here is validated as strictly as the rows the
+ * app writes itself: a field the pipeline forgot should cost the learner a missing line on their
+ * debrief, not a 500 that hides the whole thing. Only the four fields that decide what the screen
+ * shows at all are required.
+ *
+ * `turningPoint`, `debriefText` and every `evidence` string are transcript quotes. They are shown
+ * to the learner and to nobody else, ever (PRD F7 AC2). `toGuardianBand` in `lib/debrief.ts` is
+ * the only thing that turns this row into something a guardian may see.
+ *
+ * The pipeline also writes `redactedKey`, the S3 key of the redacted transcript. It is
+ * deliberately not declared here, so zod strips it on read and the key for the transcript object
+ * never reaches a route handler, a page or a browser — the same reasoning that keeps
+ * `transcriptKey` out of `DrillView`.
+ *
+ * No `ttl`: PRD 8.6 keeps scores.
+ */
+export const Score = z.object({
+  drillId: Id,
+  memberId: Id,
+  householdId: Id,
+  status: ScoreStatus,
+  createdAt: IsoTime,
+
+  scheduledAt: blankIsAbsent(IsoTime),
+  language: blankIsAbsent(Language),
+
+  /** Both absent when `score_failed`. Never guess either of them (PRD F5 AC5). */
+  score: z.number().int().min(0).max(100).optional(),
+  band: blankIsAbsent(ScoreBand),
+
+  flags: z.record(z.string(), JudgeMark).optional(),
+  credits: z.record(z.string(), JudgeMark).optional(),
+
+  turningPoint: blankIsAbsent(z.string().max(2000)),
+  debriefText: blankIsAbsent(z.string().max(4000)),
+  /** `debrief/<drillId>.mp3`. Absent when Polly failed; the score still stands. */
+  debriefAudioKey: blankIsAbsent(z.string().max(256)),
+  debriefVoiceId: blankIsAbsent(z.string().max(40)),
+
+  rubricVersion: blankIsAbsent(z.string().max(40)),
+  judgePromptVersion: blankIsAbsent(z.string().max(40)),
+  debriefPromptVersion: blankIsAbsent(z.string().max(40)),
+  judgeModelId: blankIsAbsent(z.string().max(120)),
+  debriefModelId: blankIsAbsent(z.string().max(120)),
+  guardrailId: blankIsAbsent(z.string().max(64)),
+  guardrailVersion: blankIsAbsent(z.string().max(16)),
+  failureReason: blankIsAbsent(z.string().max(400)),
+});
+export type Score = z.infer<typeof Score>;
 
 /** One drill per learner per seven days (PRD F3 AC3). */
 export const DRILL_COOLDOWN_DAYS = 7;

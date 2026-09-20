@@ -67,6 +67,8 @@ class FakeStore:
         self.claims: list[dict[str, Any]] = []
         self.finished: list[dict[str, Any]] = []
         self.released: list[str] = []
+        self.scored: list[dict[str, Any]] = []
+        self.scoring_raises: Exception | None = None
 
     def assert_member_active(self, household_id: str, member_id: str) -> None:
         assert (household_id, member_id) == (HOUSEHOLD_ID, MEMBER_ID)
@@ -83,6 +85,30 @@ class FakeStore:
         self.finished.append(
             {"record": record, "member_id": member_id, "scheduled_at": scheduled_at, "caller_pcm": caller_pcm}
         )
+
+    def start_scoring(
+        self,
+        record: DrillRecord,
+        *,
+        member_id: str,
+        scheduled_at: str,
+        household_id: str,
+        transcript_key: str,
+    ) -> str | None:
+        if self.scoring_raises is not None:
+            # The real store swallows everything; this proves the server survives even if it did not.
+            raise self.scoring_raises
+        assert self.finished, "scoring must not start before the transcript is written"
+        self.scored.append(
+            {
+                "record": record,
+                "member_id": member_id,
+                "household_id": household_id,
+                "scheduled_at": scheduled_at,
+                "transcript_key": transcript_key,
+            }
+        )
+        return "arn:aws:states:ap-south-1:1:execution:chaukanna-scoring:drill-x"
 
     def release(self, *, member_id: str, scheduled_at: str, drill_id: str, reason: str) -> None:
         self.released.append(reason)
@@ -367,3 +393,44 @@ async def test_the_learner_microphone_is_never_persisted(harness: FakeStore, mon
         socket.client_bytes(loud)
     await asyncio.wait_for(server.drill_socket(socket, None), timeout=20)
     assert loud not in harness.finished[0]["caller_pcm"]
+
+
+# ---- handing the drill to scoring ----------------------------------------------------------------
+
+
+async def test_scoring_starts_after_the_browser_is_told_the_call_is_over(
+    harness: FakeStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The learner never waits on the pipeline, and the transcript exists before anything is asked
+    to score it: `finish` has already returned by the time `start_scoring` is called."""
+    use_script(
+        monkeypatch,
+        [{"caller": "नमस्ते।", "tools": [{"name": "end_drill", "input": {"reason": "completed"}}]}],
+    )
+    socket = FakeSocket()
+    await drive(socket, make_token(), frames=1)
+
+    assert socket.messages_of("ended"), "the browser heard the call end first"
+    assert len(harness.scored) == 1
+    handed = harness.scored[0]
+    assert handed["record"] is harness.finished[0]["record"]
+    assert handed["household_id"] == HOUSEHOLD_ID
+    assert handed["scheduled_at"] == SCHEDULED_AT
+    assert handed["transcript_key"] == f"drill/transcript/{DRILL_ID}.json"
+
+
+async def test_a_scoring_failure_never_reaches_the_learner(harness: FakeStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unscored drill is a degraded outcome with a documented debrief fallback, not a broken
+    call. The row is already `ended`, so nothing here may be surfaced or retried."""
+    harness.scoring_raises = RuntimeError("states:StartExecution is not permitted")
+    use_script(
+        monkeypatch,
+        [{"caller": "नमस्ते।", "tools": [{"name": "end_drill", "input": {"reason": "completed"}}]}],
+    )
+    socket = FakeSocket()
+    await drive(socket, make_token(), frames=1)
+
+    assert socket.messages_of("ended")[0]["reason"] == "completed"
+    assert socket.messages_of("error") == []
+    assert len(harness.finished) == 1
+    assert harness.released == []

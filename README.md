@@ -69,6 +69,18 @@ npm run lint          # Next.js ESLint
 npm run build         # Production build
 ```
 
+#### Judge demo login
+
+Set `DEMO_MODE=on` in `apps/web/.env.local` and the landing page grows a "Judging this? Try it
+now, no sign-in needed" button. It posts to `/api/demo/start`, which mints a throwaway identity,
+seeds a household with one consented learner and a wide-open drill window, and drops you on the
+dashboard with a **"Demo session — not a real account"** badge and the learner's invite link.
+
+It is an authentication bypass and is off by default. With `DEMO_MODE` unset, `/api/demo/*`
+answers 404 and a demo cookie is ignored entirely, so one that escapes a demo deployment is inert
+everywhere else. Demo households are identifiable by an `ownerSub` beginning with `demo-`. Never
+set it on a deployment a real family uses.
+
 ### 2. Infrastructure (CDK)
 
 ```bash
@@ -107,6 +119,24 @@ is passed as `AGENT_IMAGE=...` and never written into `cdk.json`.
 
 Prompts live in `docs/AGENT_PROMPTS.md` and are copied verbatim into
 `apps/agent/chaukanna_agent/prompts/` by `uv run python scripts/sync_prompts.py`. A test fails if they drift.
+
+### CI deploys (GitHub OIDC)
+
+`deploy-infra` and `deploy-agent` assume an IAM role through GitHub OIDC, named by the repository
+secret `AWS_ROLE_TO_ASSUME`. Neither workflow carries an AWS access key, and neither fails when
+the secret is absent: a preflight job reports the secret missing and the deploy job is skipped.
+
+To enable them, run the setup script yourself against the target account and set the ARN it
+prints. It creates a role that can deploy the whole account, so it explains what it will do and
+waits for confirmation before creating anything:
+
+```bash
+scripts/setup-github-oidc.sh <org>/<repo> --profile chaukanna
+gh secret set AWS_ROLE_TO_ASSUME --repo <org>/<repo> --body '<the printed role ARN>'
+```
+
+The trust policy is scoped to this one repository (`repo:<org>/<repo>:*`); see
+`docs/AWS_SETUP.md` section 8.
 
 ---
 

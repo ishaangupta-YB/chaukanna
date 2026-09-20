@@ -1,0 +1,49 @@
+{
+  "fixture": "code_switcher",
+  "modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "promptVersion": "score.judge.v2",
+  "attempts": 1,
+  "flags": {
+    "stayed_on_call": {
+      "fired": false,
+      "evidence": ""
+    },
+    "accepted_secrecy": {
+      "fired": false,
+      "evidence": ""
+    },
+    "shared_identifier": {
+      "fired": false,
+      "evidence": ""
+    },
+    "agreed_to_move_money": {
+      "fired": false,
+      "evidence": ""
+    },
+    "accepted_authority": {
+      "fired": false,
+      "evidence": ""
+    }
+  },
+  "credits": {
+    "independent_verify": {
+      "fired": true,
+      "evidence": "No, I will first call my son."
+    },
+    "named_helpline": {
+      "fired": true,
+      "evidence": "Main 1930 par bhi call karungi."
+    },
+    "disconnected_early": {
+      "fired": false,
+      "evidence": "",
+      "computed": true
+    }
+  },
+  "turningPoint": "Yeh confidential matter hai. Call ke dauran kisi se discuss mat kijiye.",
+  "observed": {
+    "score": 90,
+    "band": "safe",
+    "rubricVersion": "prd.v1"
+  }
+}

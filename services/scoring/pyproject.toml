@@ -2,9 +2,12 @@
 name = "chaukanna-scoring"
 version = "0.1.0"
 requires-python = ">=3.12"
+# boto3 alone, and deliberately: this package IS the Lambda's deployment asset. `Code.fromAsset`
+# on a source tree installs nothing, and the Python 3.12 runtime provides boto3 and botocore but
+# nothing else, so pydantic (which used to be listed here) would import fine in every test and
+# then fail at cold start where nobody is watching. Validation is by hand; see transcript.py.
 dependencies = [
     "boto3>=1.43.98",
-    "pydantic>=2.13.5",
 ]
 
 [dependency-groups]
@@ -16,3 +19,7 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"

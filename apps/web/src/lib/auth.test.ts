@@ -35,7 +35,12 @@ const opts: VerifyOptions = {
 
 describe('verifyIdToken', () => {
   it('accepts a valid Cognito ID token', async () => {
-    await expect(verifyIdToken(jwt(goodClaims), opts)).resolves.toEqual({ sub: 'guardian-sub', email: 'g@example.com' });
+    // `demo: false`: a Cognito-verified guardian is never a demo one, whatever DEMO_MODE says.
+    await expect(verifyIdToken(jwt(goodClaims), opts)).resolves.toEqual({
+      sub: 'guardian-sub',
+      email: 'g@example.com',
+      demo: false,
+    });
   });
 
   it('rejects a token signed by another key', async () => {

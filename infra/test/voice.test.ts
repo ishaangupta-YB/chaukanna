@@ -13,6 +13,7 @@ function synth(containerUri?: string): Template {
     tableName: 'chaukanna',
     artifactsBucket: `chaukanna-artifacts-${ACCOUNT}`,
     inviteSigningKeySecretName: 'chaukanna/invite-signing-key',
+    scoringStateMachineName: 'chaukanna-scoring',
     containerUri,
   });
   return Template.fromStack(stack);
@@ -145,5 +146,30 @@ describe('ChaukannaVoiceStack', () => {
         for (const action of statement.Action) expect(allowed.has(action)).toBe(true);
       }
     }
+  });
+
+  test('may start a scoring run in the data region, and nothing else about one', () => {
+    // The agent hands a finished drill to Phase 5 itself, with its own role: no call back into
+    // the web app and no shared secret. The state machine is in ap-south-1 with the data, so
+    // its ARN is rebuilt here from region, account and name.
+    const [statement] = forAction(synth(), 'states:StartExecution');
+    expect(statement).toBeDefined();
+    expect(statement.Action).toEqual(['states:StartExecution']);
+    const resource = statement.Resource.join(' ');
+    expect(resource).toContain('ap-south-1');
+    expect(resource).toContain('stateMachine:chaukanna-scoring');
+    expect(resource).not.toContain('ap-northeast-1');
+    // It may begin a run; it may not stop, redrive or read one.
+    for (const other of ['states:StopExecution', 'states:DescribeExecution', 'states:RedriveExecution']) {
+      expect(forAction(synth(), other)).toHaveLength(0);
+    }
+  });
+
+  test('the runtime is told which state machine to start', () => {
+    const runtime = Object.values(synth(IMAGE).findResources('AWS::BedrockAgentCore::Runtime'))[0];
+    // A CloudFormation Fn::Join, because the partition is a pseudo parameter.
+    const arn = JSON.stringify(runtime.Properties.EnvironmentVariables.SCORING_STATE_MACHINE_ARN);
+    expect(arn).toContain('ap-south-1');
+    expect(arn).toContain('stateMachine:chaukanna-scoring');
   });
 });

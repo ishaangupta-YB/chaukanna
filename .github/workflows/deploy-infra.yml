@@ -10,13 +10,43 @@ permissions:
   contents: read
 
 jobs:
+  # `secrets` is not available in a job-level `if:`, so the presence of the deploy role is turned
+  # into a job output here and the deploy job gates on that instead. Without this, a repository
+  # that has not run scripts/setup-github-oidc.sh gets a red run on every push to main, failing at
+  # the credentials step with nothing to learn from it.
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          ROLE: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        run: |
+          if [ -n "$ROLE" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Infrastructure deploy skipped"
+              echo
+              echo "The repository secret \`AWS_ROLE_TO_ASSUME\` is not set, so there is no role to"
+              echo "assume and nothing was deployed. This is a clean skip, not a failure."
+              echo
+              echo "To enable deploys from CI, run \`scripts/setup-github-oidc.sh\` against the target"
+              echo "account, then set \`AWS_ROLE_TO_ASSUME\` to the ARN it prints."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   deploy:
+    needs: preflight
+    if: needs.preflight.outputs.configured == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME || 'arn:aws:iam::<ACCOUNT_ID>:role/chaukanna-github-deploy' }}
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
       - uses: actions/setup-node@v4
         with:

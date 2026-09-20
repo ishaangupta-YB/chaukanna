@@ -1,14 +1,20 @@
-"""Persistence for a finished drill: the drill row, the event log, the transcript and the audio.
+"""Persistence for a finished drill: the drill row, the event log, the transcript, the audio, and
+the one call that hands the drill to the scoring pipeline.
 
 Everything here runs in `ap-south-1` (the data region) while the model runs in `ap-northeast-1`,
 so every client is constructed with an explicit region. Reading `AWS_REGION` here would silently
-point at the region AgentCore happens to run the container in.
+point at the region AgentCore happens to run the container in. That applies to Step Functions too:
+the scoring state machine lives beside the table and the bucket, not beside the model, so its
+client takes the same explicit data region as the others.
 
 Two rules this file exists to keep:
 
 - **Claim before speak.** `claim` is a conditional write that turns `session_pending` into
   `in_progress` exactly once. A token that is replayed, or shared, loses the race and gets nothing.
   It is the only thing standing between a leaked token and a second call.
+- **Scoring is best effort.** `start_scoring` is the last thing a drill does and it never raises.
+  The row is already `ended` and the learner has already been told the call is over; an unscored
+  drill is a degraded outcome with a documented debrief fallback, not a broken one.
 - **Nothing unredacted is written.** The transcript in a `DrillRecord` was redacted as it was
   built, in `session.py`, before it ever reached memory. The audio object holds **only the
   caller's voice**: the learner's microphone is never written to disk, to S3 or to a log, because
@@ -40,6 +46,10 @@ TRANSCRIPT_PREFIX = "drill/transcript/"
 EVENT_TTL_DAYS = 400  # the audit row outlives the transcript; it carries ids and labels only
 DDB_BATCH_SIZE = 25
 
+# Execution names are unique inside the Step Functions history window, so naming the execution
+# after the drill is what makes a retried start idempotent: the second one is refused by name.
+SCORING_EXECUTION_PREFIX = "drill-"
+
 
 def audio_key(drill_id: str) -> str:
     return f"{AUDIO_PREFIX}{drill_id}.wav"
@@ -47,6 +57,30 @@ def audio_key(drill_id: str) -> str:
 
 def transcript_key(drill_id: str) -> str:
     return f"{TRANSCRIPT_PREFIX}{drill_id}.json"
+
+
+def scoring_execution_name(drill_id: str) -> str:
+    return f"{SCORING_EXECUTION_PREFIX}{drill_id}"
+
+
+def worth_scoring(record: DrillRecord) -> bool:
+    """Whether a finished drill produced anything a judge could read.
+
+    Almost everything is worth scoring, and deliberately so. `hangup` is the *best* result in the
+    rubric - `disconnected_early` is the largest credit - so an immediate hang up must be scored
+    or the learner who did the right thing is the one who never gets told. `tripwire` carries the
+    flag that fired, `timeout` and `completed` mean the learner stayed on the call, and
+    `safe_word` / `is_this_real` / `distress` / `model_ended` all follow real learner turns.
+
+    The one case left out is a drill that broke before the learner ever spoke: `error` (the socket
+    died, the model would not connect) with no learner line in the transcript. There is no
+    behaviour there to judge, and a band produced from nothing would be invented rather than
+    measured. A session that never started at all never reaches this function: `release` ends that
+    row and `finish` is never called.
+    """
+    if record.endReason in (None, "error"):
+        return any(line.role == "learner" for line in record.transcript)
+    return True
 
 
 def drill_keys(member_id: str, scheduled_at: str, drill_id: str) -> dict[str, str]:
@@ -82,13 +116,18 @@ class DrillClaimError(Exception):
 class DrillStore:
     """All DynamoDB and S3 access for a drill. One instance per process is fine."""
 
-    def __init__(self, *, region: str, table_name: str, bucket: str) -> None:
+    def __init__(
+        self, *, region: str, table_name: str, bucket: str, scoring_state_machine_arn: str | None = None
+    ) -> None:
         self.region = region
         self.table_name = table_name
         self.bucket = bucket
+        self.scoring_state_machine_arn = scoring_state_machine_arn
         session = boto3.Session(region_name=region)
         self._ddb = session.client("dynamodb")
         self._s3 = session.client("s3")
+        # Built only when scoring is wired up, and in the data region like the other two.
+        self._sfn = session.client("stepfunctions") if scoring_state_machine_arn else None
 
     # ---- before the call ------------------------------------------------------------------
 
@@ -240,6 +279,68 @@ class DrillStore:
             ExpressionAttributeValues=values,
         )
         event("drill_row_finished", record.drillId, reason=record.endReason, stage=record.finalStage)
+
+    # ---- handing the drill to scoring -----------------------------------------------------
+
+    def start_scoring(
+        self,
+        record: DrillRecord,
+        *,
+        member_id: str,
+        scheduled_at: str,
+        household_id: str,
+        transcript_key: str,
+    ) -> str | None:
+        """Start the scoring state machine for a drill that has already been persisted.
+
+        Never raises. Every outcome - not configured, not worth scoring, already running, refused
+        by AWS - is one structured log line and a `None`, because the learner has been told the
+        call is over and must not be made to wait on, or suffer from, the scoring pipeline.
+        """
+        drill_id = record.drillId
+        if not self.scoring_state_machine_arn or self._sfn is None:
+            # A local drill or a dev container with no pipeline behind it. Say so once, carry on.
+            event("drill_scoring_not_configured", drill_id)
+            return None
+        if not worth_scoring(record):
+            event("drill_scoring_skipped", drill_id, reason=record.endReason or "unknown", learnerTurns=0)
+            return None
+
+        name = scoring_execution_name(drill_id)
+        payload = {
+            "drillId": drill_id,
+            "memberId": member_id,
+            "householdId": household_id,
+            "scheduledAt": scheduled_at,
+            "language": record.language,
+            "transcriptKey": transcript_key,
+            "endReason": record.endReason,
+            "finalStage": record.finalStage,
+            "scenarioId": record.scenarioId,
+            "scenarioVersion": record.scenarioVersion,
+            "promptVersions": record.promptVersions,
+        }
+        try:
+            out = self._sfn.start_execution(
+                stateMachineArn=self.scoring_state_machine_arn,
+                name=name,
+                input=json.dumps(payload, ensure_ascii=False),
+            )
+        except ClientError as error:
+            code = error.response.get("Error", {}).get("Code")
+            if code == "ExecutionAlreadyExists":
+                # A normal outcome, not a failure: this drill is already being scored. The name is
+                # the drill id, so a reconnect or a replayed finish cannot start a second run.
+                event("drill_scoring_already_started", drill_id, executionName=name)
+                return None
+            event("drill_scoring_start_failed", drill_id, level=logging.WARNING, errorName=code or "ClientError")
+            return None
+        except Exception as error:  # noqa: BLE001 - an unscored drill is degraded, never broken
+            event("drill_scoring_start_failed", drill_id, level=logging.WARNING, errorName=type(error).__name__)
+            return None
+
+        event("drill_scoring_started", drill_id, executionName=name, reason=record.endReason)
+        return out.get("executionArn")
 
     def release(self, *, member_id: str, scheduled_at: str, drill_id: str, reason: str) -> None:
         """The call never really started (the model would not connect, the socket died during the

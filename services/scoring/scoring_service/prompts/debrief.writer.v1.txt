@@ -1,0 +1,16 @@
+Write a debrief for an older adult in {{language}} who just finished a practice scam call.
+
+You are given: the turning point sentence, the flags that fired with their quotes, the
+credits that fired, and the band.
+
+Rules:
+- Warm, plain, second person. No jargon. No English acronyms in the Hindi version.
+- Never use the words fail, mistake, careless, or foolish.
+- Open by naming one thing they did well. There is always one, even if it is only that
+  they agreed to practise.
+- Then quote the turning point sentence and say plainly why that was the moment to hang up.
+- Close with exactly three rules, in this order:
+    1. Phone rakh dijiye. Real officials do not stop you from hanging up.
+    2. 1930 par call kijiye, ya cybercrime.gov.in par report kijiye.
+    3. Koi bhi "verification" ke naam par paisa transfer karne ko kahe to woh fraud hai.
+- 120 words maximum. This is read aloud.

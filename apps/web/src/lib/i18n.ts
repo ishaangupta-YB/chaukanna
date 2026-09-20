@@ -89,6 +89,42 @@ const hi = {
   drillRetry: 'दोबारा कोशिश करें',
   drillNone: 'अभी कोई अभ्यास कॉल नहीं है।',
 
+  // The debrief. Never the words fail, mistake, careless or foolish, in either language —
+  // `debrief.writer.v1` forbids them to the model and the rule applies to the screen too.
+  debriefTitle: 'आपकी अभ्यास कॉल का नतीजा',
+  debriefOpen: 'नतीजा देखें',
+  debriefWaiting: 'तुम्हारा नतीजा तैयार हो रहा है…',
+  debriefWaitingHint: 'एक मिनट से भी कम लगेगा। यह पन्ना अपने-आप खुल जाएगा।',
+  debriefSlow: 'नतीजा तैयार होने में कुछ ज़्यादा समय लग रहा है।',
+  debriefRetry: 'फिर से देखें',
+  debriefListen: 'सुनिए',
+  debriefPause: 'रोकिए',
+  debriefAudioMissing: 'इस बार आवाज़ तैयार नहीं हो पाई। पूरी बात नीचे लिखी है।',
+  debriefTurningPointLabel: 'कॉल का वह पल',
+  debriefTurningPointHint: 'यही वह पल था जब फ़ोन रख देना चाहिए था।',
+  debriefWentWellLabel: 'यह अच्छा रहा',
+  debriefWentWellDefault: 'आपने अभ्यास करने की हिम्मत दिखाई। यही सबसे बड़ा बचाव है।',
+  debriefWentWellHangUp: 'आपने कॉल जल्दी काट दी।',
+  debriefWentWellVerify: 'आपने खुद जाँच करने की बात कही।',
+  debriefWentWellHelpline: 'आपने हेल्पलाइन का नाम लिया।',
+  debriefNoticedLabel: 'ठग ने क्या-क्या आज़माया',
+  debriefFlagStayedOnCall: 'आप कॉल पर बने रहे।',
+  debriefFlagAcceptedSecrecy: 'आपने बात किसी को न बताने की बात मान ली।',
+  debriefFlagSharedIdentifier: 'आपने अपनी पहचान का नंबर बता दिया।',
+  debriefFlagAgreedToMoveMoney: 'आपने पैसे भेजने की बात मान ली।',
+  debriefFlagAcceptedAuthority: 'आपने मान लिया कि वह सरकारी अधिकारी है।',
+  debriefFlagOther: 'ठग ने यह तरीका आज़माया।',
+  debriefRulesTitle: 'हमेशा ये तीन बातें याद रखिए',
+  debriefRuleHangUp: 'फ़ोन रख दीजिए। असली अधिकारी आपको फ़ोन रखने से कभी नहीं रोकते।',
+  debriefRuleCall1930: '1930 पर कॉल कीजिए, या cybercrime.gov.in पर शिकायत दर्ज कीजिए।',
+  debriefRuleNeverPay: 'कोई भी "जाँच" या "verification" के नाम पर पैसे भेजने को कहे, तो वह ठगी है।',
+  debriefGeneric: 'इस बार हम पूरी कॉल नहीं पढ़ पाए, इसलिए कोई नतीजा नहीं दिखा रहे। आपने अभ्यास किया, यही मायने रखता है।',
+  debriefBandSafe: 'आप पूरी तरह सतर्क रहे',
+  debriefBandWobbly: 'आप कुछ देर बातचीत में बने रहे',
+  debriefBandAtRisk: 'इस बार ठग आपको काफ़ी आगे तक ले गया',
+  debriefNone: 'इस अभ्यास कॉल का कोई नतीजा नहीं है।',
+  homeLastResult: 'पिछली अभ्यास कॉल',
+
   drillErrorMic: 'माइक्रोफ़ोन नहीं चल पाया, इसलिए कॉल नहीं हो सकी।',
   drillErrorAudio: 'इस फ़ोन पर आवाज़ नहीं चल पाई।',
   drillErrorConnection: 'कॉल कट गई। कोई बात नहीं, दोबारा कोशिश कर सकते हैं।',
@@ -185,6 +221,40 @@ const en: Dict = {
   drillRetry: 'Try again',
   drillNone: 'There is no practice call waiting.',
 
+  debriefTitle: 'How your practice call went',
+  debriefOpen: 'See the result',
+  debriefWaiting: 'Your result is being prepared…',
+  debriefWaitingHint: 'This takes less than a minute. The page will open by itself.',
+  debriefSlow: 'The result is taking a little longer than usual.',
+  debriefRetry: 'Look again',
+  debriefListen: 'Listen',
+  debriefPause: 'Pause',
+  debriefAudioMissing: 'The spoken version is not ready this time. Everything is written below.',
+  debriefTurningPointLabel: 'The moment in the call',
+  debriefTurningPointHint: 'That was the moment to put the phone down.',
+  debriefWentWellLabel: 'This went well',
+  debriefWentWellDefault: 'You were willing to practise. That is the strongest protection there is.',
+  debriefWentWellHangUp: 'You ended the call early.',
+  debriefWentWellVerify: 'You said you would check for yourself.',
+  debriefWentWellHelpline: 'You named the helpline.',
+  debriefNoticedLabel: 'What the caller tried',
+  debriefFlagStayedOnCall: 'You stayed on the call.',
+  debriefFlagAcceptedSecrecy: 'You agreed to keep the call to yourself.',
+  debriefFlagSharedIdentifier: 'You gave out an identifying number.',
+  debriefFlagAgreedToMoveMoney: 'You agreed to move money.',
+  debriefFlagAcceptedAuthority: 'You accepted that the caller was a government official.',
+  debriefFlagOther: 'The caller tried this on you.',
+  debriefRulesTitle: 'Always remember these three things',
+  debriefRuleHangUp: 'Put the phone down. Real officials never stop you from hanging up.',
+  debriefRuleCall1930: 'Call 1930, or report it at cybercrime.gov.in.',
+  debriefRuleNeverPay: 'If anyone asks you to send money for a "check" or "verification", it is a scam.',
+  debriefGeneric: 'We could not read the whole call this time, so we are not showing a result. You practised, and that is what counts.',
+  debriefBandSafe: 'You stayed alert throughout',
+  debriefBandWobbly: 'You stayed in the conversation for a while',
+  debriefBandAtRisk: 'This time the caller led you quite far',
+  debriefNone: 'There is no result for this practice call.',
+  homeLastResult: 'Your last practice call',
+
   drillErrorMic: 'The microphone did not work, so the call could not start.',
   drillErrorAudio: 'Sound did not work on this phone.',
   drillErrorConnection: 'The call was cut off. That is fine, you can try again.',
@@ -211,6 +281,20 @@ export function langFromLocale(locale: 'hi-IN' | 'en-IN'): Lang {
 export function localeFromLang(lang: Lang): 'hi-IN' | 'en-IN' {
   return lang === 'en' ? 'en-IN' : 'hi-IN';
 }
+
+/**
+ * The three rules every debrief closes with, in the order `debrief.writer.v1` fixes them
+ * (PRD F6 AC3). Keys rather than sentences, so that the order is stated once and the wording
+ * lives in both dictionaries.
+ *
+ * They live here, next to the words, rather than in `lib/debrief.ts`, for a second reason: the
+ * debrief screen is a client component, and `lib/debrief.ts` reaches DynamoDB and S3. Importing
+ * the order from there dragged the whole AWS SDK into the browser bundle.
+ *
+ * Reordering this array changes what a frightened person is told to do first. Do not.
+ */
+export const DEBRIEF_RULE_KEYS = ['debriefRuleHangUp', 'debriefRuleCall1930', 'debriefRuleNeverPay'] as const;
+export type DebriefRuleKey = (typeof DEBRIEF_RULE_KEYS)[number];
 
 /** Words accepted by the typed consent fallback, compared after trimming and lower casing. */
 export const TYPED_YES = new Set(['हाँ', 'हां', 'haan', 'haa', 'han', 'ha', 'yes']);
