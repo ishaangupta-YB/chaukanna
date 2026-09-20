@@ -2,13 +2,32 @@ import * as cdk from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
 import { ChaukannaStack } from '../lib/chaukanna-stack';
 
-function synth(appUrl?: string): Template {
+function synth(appUrl?: string, senderEmail?: string): Template {
   const app = new cdk.App();
   const stack = new ChaukannaStack(app, 'TestChaukannaStack', {
     env: { account: '123456789012', region: 'ap-south-1' },
     appUrl,
+    senderEmail,
   });
   return Template.fromStack(stack);
+}
+
+/** Every statement of every inline policy in the stack, flattened. */
+function policyStatements(template: Template): {
+  Action: string | string[];
+  Resource: unknown;
+  Condition?: Record<string, Record<string, unknown>>;
+}[] {
+  return Object.values(template.findResources('AWS::IAM::Policy')).flatMap(
+    (policy) => policy.Properties.PolicyDocument.Statement,
+  );
+}
+
+/** The one statement granting `action`, or undefined. */
+function statementFor(template: Template, action: string) {
+  return policyStatements(template).find((statement) =>
+    ([] as string[]).concat(statement.Action).includes(action),
+  );
 }
 
 describe('ChaukannaStack', () => {
@@ -189,5 +208,152 @@ describe('ChaukannaStack', () => {
         }
       }
     }
+  });
+  test('ring lambda runs the phase 4 handler on python 3.12, arm', () => {
+    synth().hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'chaukanna-ring',
+      Runtime: 'python3.12',
+      Architectures: ['arm64'],
+      Handler: 'lifecycle_service.ring.handler',
+      Timeout: 30,
+      MemorySize: 256,
+    });
+  });
+
+  test('no function declares AWS_REGION, which Lambda reserves', () => {
+    // CloudFormation rejects the whole stack over this one, not just the function.
+    const functions = synth().findResources('AWS::Lambda::Function');
+    for (const fn of Object.values(functions)) {
+      const variables: Record<string, unknown> = fn.Properties.Environment?.Variables ?? {};
+      expect(Object.keys(variables)).not.toContain('AWS_REGION');
+    }
+  });
+
+  test('ring lambda knows the table and where to send the learner', () => {
+    synth('https://main.d123.amplifyapp.com/').hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'chaukanna-ring',
+      Environment: {
+        Variables: Match.objectLike({
+          APP_URL: 'https://main.d123.amplifyapp.com',
+          SENDER_EMAIL: '',
+          DRILL_DUE_MINUTES: '30',
+        }),
+      },
+    });
+  });
+
+  test('ring lambda logs to an explicit group, not the deprecated logRetention lambda', () => {
+    const template = synth();
+    template.hasResourceProperties('AWS::Logs::LogGroup', { RetentionInDays: 30 });
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'chaukanna-ring',
+      LoggingConfig: Match.objectLike({ LogGroup: Match.anyValue() }),
+    });
+  });
+
+  test('ring lambda may move a drill forward and never create or delete one', () => {
+    const template = synth();
+    const ddb = policyStatements(template).filter(
+      (statement) =>
+        ([] as string[]).concat(statement.Action).includes('dynamodb:UpdateItem') &&
+        !([] as string[]).concat(statement.Action).includes('dynamodb:PutItem'),
+    );
+    expect(ddb).toHaveLength(1);
+    expect(([] as string[]).concat(ddb[0].Action).sort()).toEqual([
+      'dynamodb:GetItem',
+      'dynamodb:Query',
+      'dynamodb:UpdateItem',
+    ]);
+    expect(JSON.stringify(ddb[0].Resource)).toContain('index/*');
+  });
+
+  test('scheduler may only assume its role for schedules in this account', () => {
+    // The confused deputy guard. Without aws:SourceAccount someone else's schedule could name
+    // this role and the scheduler service would assume it for them.
+    synth().hasResourceProperties('AWS::IAM::Role', {
+      RoleName: 'chaukanna-scheduler-invoke-role',
+      AssumeRolePolicyDocument: Match.objectLike({
+        Statement: [
+          Match.objectLike({
+            Principal: { Service: 'scheduler.amazonaws.com' },
+            // `cdk.Aws.ACCOUNT_ID` stays a Ref in the template, resolved by CloudFormation.
+            Condition: { StringEquals: { 'aws:SourceAccount': { Ref: 'AWS::AccountId' } } },
+          }),
+        ],
+      }),
+    });
+  });
+
+  test('the scheduler role may ring and do nothing else', () => {
+    const invoke = statementFor(synth(), 'lambda:InvokeFunction');
+    expect(invoke).toBeDefined();
+    expect(([] as string[]).concat(invoke!.Action)).toEqual(['lambda:InvokeFunction']);
+  });
+
+  test('compute role manages drill schedules only, by name prefix', () => {
+    const create = statementFor(synth(), 'scheduler:CreateSchedule');
+    expect(create).toBeDefined();
+    expect(([] as string[]).concat(create!.Action).sort()).toEqual([
+      'scheduler:CreateSchedule',
+      'scheduler:DeleteSchedule',
+      'scheduler:GetSchedule',
+    ]);
+    // The name prefix is the whole authorization boundary for this grant.
+    expect(JSON.stringify(create!.Resource)).toContain('schedule/default/chaukanna-drill-*');
+  });
+
+  test('compute role may pass exactly the scheduler role, to scheduler only', () => {
+    // The phase 4 pitfall: CreateSchedule passes a role, so without this the call fails at
+    // runtime with an opaque AccessDenied and nothing in the template looks wrong.
+    const template = synth();
+    const pass = statementFor(template, 'iam:PassRole');
+    expect(pass).toBeDefined();
+    expect(pass!.Condition).toEqual({
+      StringEquals: { 'iam:PassedToService': 'scheduler.amazonaws.com' },
+    });
+    const resources = [pass!.Resource].flat();
+    expect(resources).toHaveLength(1);
+    const schedulerRole = Object.entries(template.findResources('AWS::IAM::Role')).find(
+      ([, role]) => role.Properties.RoleName === 'chaukanna-scheduler-invoke-role',
+    );
+    expect(JSON.stringify(resources[0])).toContain(schedulerRole![0]);
+  });
+
+  test('no ses identity and no send rights until a sender is configured', () => {
+    const template = synth();
+    template.resourceCountIs('AWS::SES::EmailIdentity', 0);
+    expect(statementFor(template, 'ses:SendEmail')).toBeUndefined();
+  });
+
+  test('a configured sender is verified and is the only address the ring may send as', () => {
+    const template = synth(undefined, 'drills@example.com');
+    template.hasResourceProperties('AWS::SES::EmailIdentity', {
+      EmailIdentity: 'drills@example.com',
+    });
+    const send = statementFor(template, 'ses:SendEmail');
+    expect(send).toBeDefined();
+    expect(send!.Condition).toEqual({ StringEquals: { 'ses:FromAddress': 'drills@example.com' } });
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'chaukanna-ring',
+      Environment: { Variables: Match.objectLike({ SENDER_EMAIL: 'drills@example.com' }) },
+    });
+  });
+
+  test('the lifecycle grants carry no wildcard action either', () => {
+    // Same guard as above, run over the stack that also has a sender configured.
+    for (const statement of policyStatements(synth(undefined, 'drills@example.com'))) {
+      for (const action of ([] as string[]).concat(statement.Action)) {
+        expect(action).not.toBe('*');
+        expect(action.endsWith(':*')).toBe(false);
+      }
+    }
+  });
+
+  test('the web app is told where to find the ring lambda and the role to pass', () => {
+    const outputs = synth().findOutputs('*');
+    expect(outputs.RingLambdaArn.Export.Name).toBe('ChaukannaRingLambdaArn');
+    expect(outputs.RingLambdaArn.Description).toContain('RING_LAMBDA_ARN');
+    expect(outputs.SchedulerInvokeRoleArn.Export.Name).toBe('ChaukannaSchedulerInvokeRoleArn');
+    expect(outputs.SchedulerInvokeRoleArn.Description).toContain('SCHEDULER_INVOKE_ROLE_ARN');
   });
 });

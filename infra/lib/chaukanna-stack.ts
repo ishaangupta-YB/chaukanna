@@ -3,7 +3,11 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ses from 'aws-cdk-lib/aws-ses';
+import * as path from 'node:path';
 import { Construct } from 'constructs';
 
 export interface ChaukannaStackProps extends cdk.StackProps {
@@ -17,6 +21,13 @@ export interface ChaukannaStackProps extends cdk.StackProps {
    * offered there, so the agent runtime the browser connects to lives in this region instead.
    */
   voiceRegion?: string;
+  /**
+   * Address the drill nudge email is sent from, e.g. from `-c chaukanna:senderEmail=<address>`.
+   * Never written into `cdk.json`: this repository is public and an address is personal data.
+   * Leave it unset and the ring Lambda simply skips the email; in-app polling is the primary
+   * path either way.
+   */
+  senderEmail?: string;
 }
 
 const LOCAL_APP_URL = 'http://localhost:3000';
@@ -39,6 +50,8 @@ export class ChaukannaStack extends cdk.Stack {
   public readonly googleIdentityProvider: cognito.UserPoolIdentityProviderGoogle;
   public readonly inviteSigningKey: secretsmanager.Secret;
   public readonly computeRole: iam.Role;
+  public readonly ringFunction: lambda.Function;
+  public readonly schedulerInvokeRole: iam.Role;
 
   constructor(scope: Construct, id: string, props?: ChaukannaStackProps) {
     super(scope, id, props);
@@ -244,6 +257,134 @@ export class ChaukannaStack extends cdk.Stack {
       }),
     );
 
+    // 9. Ring Lambda. The one thing that has to happen with no browser open: when a drill's
+    // one time EventBridge schedule fires, this function re-checks consent and state, flips
+    // `scheduled` to `due`, writes the ring event and nudges the learner by email. The re-check
+    // is the safety part. A schedule that fires a second after consent was revoked is normal,
+    // and this function is the only thing in a position to refuse it.
+    //
+    // The code is owned by `services/lifecycle`. Tests, virtualenvs and caches are excluded so
+    // the asset hash follows source changes rather than whatever is lying around locally.
+    const senderEmail = props?.senderEmail?.trim() ?? '';
+
+    // Explicit log group rather than the deprecated `logRetention` property, which provisions a
+    // custom resource Lambda with broad `logs:` rights just to set one number.
+    const ringLogGroup = new logs.LogGroup(this, 'RingLambdaLogs', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    this.ringFunction = new lambda.Function(this, 'RingLambda', {
+      functionName: 'chaukanna-ring',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      architecture: lambda.Architecture.ARM_64,
+      handler: 'lifecycle_service.ring.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../services/lifecycle'), {
+        exclude: ['tests', '.venv', '**/__pycache__', '*.lock', '.pytest_cache', '.ruff_cache'],
+      }),
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      logGroup: ringLogGroup,
+      // `AWS_REGION` is deliberately not here. Lambda reserves it and sets it itself, and
+      // CloudFormation rejects the entire stack if a function declares it.
+      environment: {
+        TABLE_NAME: this.table.tableName,
+        // The link in the nudge email has to point at somewhere the learner can actually open,
+        // which before Amplify exists is the same localhost origin Cognito redirects to.
+        APP_URL: props?.appUrl?.replace(/\/+$/, '') ?? LOCAL_APP_URL,
+        // Empty when no sender is configured. The Lambda then skips the email and the in-app
+        // poll remains the primary path, exactly as the phase file describes.
+        SENDER_EMAIL: senderEmail,
+        // Nobody answers within half an hour and the drill is missed. Phase 4 evaluates that
+        // lazily on the next read, so this is only the expiry marker the ring writes.
+        DRILL_DUE_MINUTES: '30',
+      },
+    });
+
+    // Reads the drill and its consent, queries GSI1 for the member's state rows, and conditionally
+    // updates the one row. No PutItem and no DeleteItem: a ring may move a drill forward, never
+    // create or destroy one.
+    this.ringFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem'],
+        resources: [this.table.tableArn, `${this.table.tableArn}/index/*`],
+      }),
+    );
+
+    if (senderEmail) {
+      // `ses:FromAddress` pins the envelope sender. Without it a role holding `ses:SendEmail`
+      // can send as any identity the account has verified, which is a phishing primitive in a
+      // product whose whole subject is phishing.
+      this.ringFunction.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['ses:SendEmail'],
+          resources: [
+            `arn:${cdk.Aws.PARTITION}:ses:${this.region}:${this.account}:identity/${senderEmail}`,
+          ],
+          conditions: { StringEquals: { 'ses:FromAddress': senderEmail } },
+        }),
+      );
+    }
+
+    // 10. The role EventBridge Scheduler assumes to pull the trigger.
+    //
+    // A schedule carries the role it should use, so the trust policy is the whole defence: the
+    // `aws:SourceAccount` condition is the confused deputy guard. Without it, anyone else's
+    // schedule in anyone else's account could name this role's ARN and the scheduler service
+    // would assume it on their behalf.
+    this.schedulerInvokeRole = new iam.Role(this, 'SchedulerInvokeRole', {
+      roleName: 'chaukanna-scheduler-invoke-role',
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com', {
+        conditions: { StringEquals: { 'aws:SourceAccount': cdk.Aws.ACCOUNT_ID } },
+      }),
+      description: 'Assumed by EventBridge Scheduler to invoke the Chaukanna ring Lambda',
+    });
+    this.schedulerInvokeRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [this.ringFunction.functionArn],
+      }),
+    );
+
+    // 11. What the web app may do with schedules.
+    //
+    // Every schedule the app creates is named `chaukanna-drill-<drillId>` on the default bus, so
+    // that name prefix is the entire authorization boundary: the compute role can create, read
+    // and delete drill schedules and cannot touch any other schedule in the account. Deleting is
+    // not optional; a cancelled drill whose schedule survives still fires.
+    this.computeRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['scheduler:CreateSchedule', 'scheduler:DeleteSchedule', 'scheduler:GetSchedule'],
+        resources: [
+          `arn:${cdk.Aws.PARTITION}:scheduler:${this.region}:${this.account}:schedule/default/chaukanna-drill-*`,
+        ],
+      }),
+    );
+    // The pitfall the phase file calls out. `CreateSchedule` hands Scheduler a role ARN, which
+    // counts as passing a role, so without this the call fails at runtime with an opaque
+    // AccessDenied and nothing in the template looks wrong. Scoped to exactly the one role, and
+    // conditioned on the service it may be passed to, so this is not a general escalation path.
+    this.computeRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['iam:PassRole'],
+        resources: [this.schedulerInvokeRole.roleArn],
+        conditions: { StringEquals: { 'iam:PassedToService': 'scheduler.amazonaws.com' } },
+      }),
+    );
+
+    // 12. The address the nudge email comes from, when there is one.
+    //
+    // Optional on purpose: the stack deploys and drills still ring with no sender configured,
+    // the email is simply skipped. Pass one with `-c chaukanna:senderEmail=<address>` and AWS
+    // sends a verification mail to it; the identity is not usable until someone clicks through.
+    // SES starts every account in the sandbox, where mail is only delivered to verified
+    // addresses, which is all a demo needs and nothing we should try to leave.
+    if (senderEmail) {
+      new ses.EmailIdentity(this, 'SenderIdentity', {
+        identity: ses.Identity.email(senderEmail),
+      });
+    }
+
     // Tag everything in stack
     cdk.Tags.of(this).add('project', 'chaukanna');
 
@@ -286,6 +427,18 @@ export class ChaukannaStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AmplifyComputeRoleArn', {
       value: this.computeRole.roleArn,
       description: 'Attach as the compute role in Amplify console, App settings, IAM roles',
+    });
+
+    new cdk.CfnOutput(this, 'RingLambdaArn', {
+      value: this.ringFunction.functionArn,
+      description: 'Set as RING_LAMBDA_ARN in the web app: the target of every drill schedule',
+      exportName: 'ChaukannaRingLambdaArn',
+    });
+
+    new cdk.CfnOutput(this, 'SchedulerInvokeRoleArn', {
+      value: this.schedulerInvokeRole.roleArn,
+      description: 'Set as SCHEDULER_INVOKE_ROLE_ARN in the web app: passed as a schedule target role',
+      exportName: 'ChaukannaSchedulerInvokeRoleArn',
     });
 
     new cdk.CfnOutput(this, 'AwsRegion', {

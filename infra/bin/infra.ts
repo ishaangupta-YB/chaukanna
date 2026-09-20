@@ -15,6 +15,16 @@ const voiceRegion: string = app.node.tryGetContext('chaukanna:voiceRegion') || '
 // The deployed Amplify origin, set once in cdk.json context after the Amplify app exists.
 const appUrl: string | undefined = app.node.tryGetContext('chaukanna:appUrl') || undefined;
 
+// The address the drill nudge email is sent from. Deliberately absent from cdk.json: this
+// repository is public and an email address is personal data, so it is passed at synth time:
+//
+//   npx cdk deploy ChaukannaStack -c chaukanna:senderEmail=<address>
+//
+// Unset, no SES identity is created and the ring Lambda skips the email. SES also starts every
+// account in the sandbox, where only verified addresses receive mail, which is fine for a demo.
+const senderEmail: string | undefined =
+  app.node.tryGetContext('chaukanna:senderEmail') || undefined;
+
 // The agent image to run. An ECR URI contains the account id, and this repository is public, so
 // it is never written into cdk.json: pass it on the command line or in the environment.
 //
@@ -30,6 +40,7 @@ new ChaukannaStack(app, 'ChaukannaStack', {
   env: { account, region },
   appUrl,
   voiceRegion,
+  senderEmail,
   description: 'Chaukanna Core Infrastructure (DynamoDB, S3, Cognito, secrets, Amplify compute role)',
 });
 
