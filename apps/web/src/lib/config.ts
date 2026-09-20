@@ -44,6 +44,19 @@ export const config = {
   get agentRuntimeArn(): string {
     return required('AGENT_RUNTIME_ARN');
   },
+  /**
+   * The ring Lambda an EventBridge schedule invokes when a drill's moment arrives, and the role
+   * the scheduler assumes to invoke it. Both are outputs of `ChaukannaStack`.
+   *
+   * Read lazily, like everything here, so that a developer without them set can still use "ring
+   * now" — the demo path that needs no scheduler at all.
+   */
+  get ringLambdaArn(): string {
+    return required('RING_LAMBDA_ARN');
+  },
+  get schedulerInvokeRoleArn(): string {
+    return required('SCHEDULER_INVOKE_ROLE_ARN');
+  },
   get userPoolId(): string {
     return required('USER_POOL_ID');
   },

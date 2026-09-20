@@ -14,19 +14,22 @@ const REFUSAL: Record<string, string> = {
   paused: 'Practice calls are stopped for them.',
   outside_window: 'It is outside the hours they chose. Change the hours, or wait.',
   weekly_cap: 'They have already had a practice call in the last seven days.',
+  ring_too_soon: 'You rang them a few minutes ago. Give it ten minutes.',
 };
 
-/** New invite link, ring now, and the guardian's own kill switch for one member. */
+/** New invite link, schedule, ring now, and the guardian's own kill switch for one member. */
 export function MemberActions({
   memberId,
   name,
   canPause,
   canRing,
+  canSchedule,
 }: {
   memberId: string;
   name: string;
   canPause: boolean;
   canRing: boolean;
+  canSchedule: boolean;
 }) {
   const router = useRouter();
   const [link, setLink] = useState<string | null>(null);
@@ -34,15 +37,17 @@ export function MemberActions({
   const [state, setState] = useState<'idle' | 'working' | 'error'>('idle');
 
   /**
-   * PRD F3 AC4: the demo control. It only creates the drill; the learner still has to open their
-   * own page and tap answer, and every rule is checked again when they do.
+   * The two ways a drill comes into existence.
+   *
+   * `schedule` is the real one (PRD F3 AC2): it picks a random moment inside the learner's window
+   * and the call arrives on its own. `now` is the demo control (PRD F3 AC4) and rings immediately.
+   * Neither starts a call: the learner still has to open their own page and tap answer, and every
+   * rule is checked again when they do.
    */
-  async function ringNow() {
+  async function createDrill(body: { now: true } | { schedule: true }) {
     setState('working');
     setRefusal(null);
-    const res = await callApi<{ drillId: string; error?: string }>(`/api/members/${memberId}/drills`, 'POST', {
-      now: true,
-    });
+    const res = await callApi<{ drillId: string; error?: string }>(`/api/members/${memberId}/drills`, 'POST', body);
     if (res.ok) {
       setState('idle');
       router.refresh();
@@ -77,8 +82,13 @@ export function MemberActions({
         <button type="button" onClick={reinvite} disabled={state === 'working'} className="min-h-11 rounded-lg border border-stone-400 px-4 font-semibold">
           New invite link
         </button>
+        {canSchedule && (
+          <button type="button" onClick={() => createDrill({ schedule: true })} disabled={state === 'working'} className="min-h-11 rounded-lg border border-emerald-700 bg-emerald-700 px-4 font-semibold text-white">
+            Schedule a practice call
+          </button>
+        )}
         {canRing && (
-          <button type="button" onClick={ringNow} disabled={state === 'working'} className="min-h-11 rounded-lg border border-emerald-700 bg-emerald-700 px-4 font-semibold text-white">
+          <button type="button" onClick={() => createDrill({ now: true })} disabled={state === 'working'} className="min-h-11 rounded-lg border border-emerald-700 px-4 font-semibold text-emerald-800">
             Ring now
           </button>
         )}

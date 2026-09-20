@@ -1,5 +1,5 @@
 import type { Guardian } from './auth';
-import { getHousehold, putHousehold, type Household } from './db';
+import { getHousehold, putHousehold, setHouseholdOwnerEmail, type Household } from './db';
 import { forbidden } from './errors';
 import { log } from './log';
 import { sha256Hex } from './signing';
@@ -19,6 +19,7 @@ export async function createHousehold(guardian: Guardian, name: string): Promise
     ownerSub: guardian.sub,
     name,
     createdAt: new Date().toISOString(),
+    ownerEmail: guardian.email ?? undefined,
   });
   const household = await getHousehold(householdId);
   if (!household || household.ownerSub !== guardian.sub) throw forbidden();
@@ -28,7 +29,18 @@ export async function createHousehold(guardian: Guardian, name: string): Promise
 
 export async function getGuardianHousehold(guardian: Guardian): Promise<Household | null> {
   const household = await getHousehold(householdIdForGuardian(guardian.sub));
-  return household && household.ownerSub === guardian.sub ? household : null;
+  if (!household || household.ownerSub !== guardian.sub) return null;
+
+  /*
+   * Keep the stored address in step with the one Google just verified, so the drill nudge does
+   * not go on being sent to an address the guardian has abandoned. Written only when it actually
+   * differs, so an ordinary page load stays a read.
+   */
+  if (guardian.email && household.ownerEmail !== guardian.email) {
+    await setHouseholdOwnerEmail(household.householdId, guardian.email);
+    return { ...household, ownerEmail: guardian.email };
+  }
+  return household;
 }
 
 /** Default deny: the id in the URL must be the caller's own household. */

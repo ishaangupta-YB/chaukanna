@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { resolveMember } from '@/lib/access';
 import { config } from '@/lib/config';
 import { recordConsent, withdrawConsent } from '@/lib/consent';
+import { cancelPendingDrills } from '@/lib/drills';
 import { ConsentCategory, ConsentMethod, Language } from '@/lib/db';
 import { assertSameOrigin, handle, json, parseBody } from '@/lib/http';
 import { currentPrincipals } from '@/lib/session';
@@ -30,6 +31,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const { id } = await params;
     const { member } = await resolveMember(await currentPrincipals(), id, ['learner']);
     await withdrawConsent(member);
-    return json({ status: 'revoked' });
+    // Withdrawing consent has to reach drills that are already in flight, not just future ones
+    // (PRD F2 AC4). The schedule behind each is deleted too, and the ring Lambda re-reads the row
+    // anyway, so one that fires in the same second still rings nobody.
+    const cancelled = await cancelPendingDrills(member, 'consent_withdrawn');
+    return json({ status: 'revoked', cancelled });
   });
 }

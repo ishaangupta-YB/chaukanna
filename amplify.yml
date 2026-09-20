@@ -14,7 +14,7 @@ applications:
             # AWS_REGION is provided by the SSR runtime itself (Amplify reserves the AWS_ prefix).
             # APP_URL defaults to the branch's default Amplify domain, so the very first build works
             # before anyone knows the app id. Set APP_URL explicitly for a custom domain.
-            - if [ -z "$APP_URL" ]; then export APP_URL="https://$(echo "$AWS_BRANCH" | tr '/' '-').${AWS_APP_ID}.amplifyapp.com"; fi; for v in TABLE_NAME ARTIFACTS_BUCKET USER_POOL_ID USER_POOL_CLIENT_ID COGNITO_DOMAIN APP_URL VOICE_REGION; do if [ -z "$(printenv $v)" ]; then echo "Missing Amplify environment variable $v" && exit 1; fi; echo "$v=$(printenv $v)" >> .env.production; done
+            - if [ -z "$APP_URL" ]; then export APP_URL="https://$(echo "$AWS_BRANCH" | tr '/' '-').${AWS_APP_ID}.amplifyapp.com"; fi; for v in TABLE_NAME ARTIFACTS_BUCKET USER_POOL_ID USER_POOL_CLIENT_ID COGNITO_DOMAIN APP_URL VOICE_REGION AGENT_RUNTIME_ARN RING_LAMBDA_ARN SCHEDULER_INVOKE_ROLE_ARN; do if [ -z "$(printenv $v)" ]; then echo "Missing Amplify environment variable $v" && exit 1; fi; echo "$v=$(printenv $v)" >> .env.production; done
             - npm run build
       artifacts:
         baseDirectory: .next

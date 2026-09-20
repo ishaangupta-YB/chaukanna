@@ -38,6 +38,14 @@ export const keys = {
   drillPrefix: 'DRILL#',
   drillEvents: (drillId: string) => `DRILL#${drillId}`,
   eventPrefix: 'EVT#',
+  /**
+   * A lifecycle event, in the same partition as the agent's in-call events. The agent numbers its
+   * own (`EVT#000000`), so keying ours by timestamp keeps the two writers apart for good.
+   */
+  lifecycleEvent: (drillId: string, at: string, name: string) => ({
+    pk: `DRILL#${drillId}`,
+    sk: `EVT#${at}#${name}`,
+  }),
 };
 
 /** GSI1 lets Phase 4's scheduler sweep drills by state without scanning. */

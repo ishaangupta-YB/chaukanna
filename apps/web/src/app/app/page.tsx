@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { CreateHouseholdForm } from '@/components/guardian/CreateHouseholdForm';
 import { guardianOrLogin } from '@/components/guardian/guardian-page';
 import { MemberActions } from '@/components/guardian/MemberActions';
-import { getLatestConsent, listMembers, type Member } from '@/lib/db';
+import { getLatestConsent, listDrills, listMembers, type Member } from '@/lib/db';
 import { getGuardianHousehold } from '@/lib/households';
 import { windowSummary } from '@/lib/i18n';
 import { windowOrDefault } from '@/lib/members';
@@ -36,6 +36,9 @@ export default async function GuardianDashboard() {
       member: m,
       window: (await windowOrDefault(m.memberId)).window,
       consent: m.status === 'invited' ? null : await getLatestConsent(m.memberId),
+      // The instant a scheduled drill will ring, shown because a random time nobody can see is
+      // just an unexplained phone call. The guardian sees when, never what.
+      scheduled: (await listDrills(m.memberId, 5)).find((drill) => drill.state === 'scheduled') ?? null,
     })),
   );
 
@@ -51,7 +54,7 @@ export default async function GuardianDashboard() {
       {rows.length === 0 && <p className="rounded-2xl border border-dashed border-stone-400 p-6">No one invited yet.</p>}
 
       <ul className="flex flex-col gap-4">
-        {rows.map(({ member, window, consent }) => (
+        {rows.map(({ member, window, consent, scheduled }) => (
           <li key={member.memberId} className="flex flex-col gap-3 rounded-2xl border border-stone-300 bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-bold">{member.displayName}</h2>
@@ -64,6 +67,19 @@ export default async function GuardianDashboard() {
               <dd>{member.language === 'hi-IN' ? 'Hindi' : 'Indian English'}</dd>
               <dt className="text-stone-600">Window</dt>
               <dd>{windowSummary('en', window.days, window.start, window.end)} IST</dd>
+              {scheduled && (
+                <>
+                  <dt className="text-stone-600">Next call</dt>
+                  <dd>
+                    {new Date(scheduled.scheduledAt).toLocaleString('en-IN', {
+                      timeZone: 'Asia/Kolkata',
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}{' '}
+                    IST
+                  </dd>
+                </>
+              )}
               {consent && (
                 <>
                   <dt className="text-stone-600">Consent</dt>
@@ -85,6 +101,7 @@ export default async function GuardianDashboard() {
               name={member.displayName}
               canPause={member.status === 'active'}
               canRing={member.status === 'active'}
+              canSchedule={member.status === 'active' && !scheduled}
             />
           </li>
         ))}

@@ -16,6 +16,12 @@ export const Household = z.object({
   ownerSub: z.string().min(1),
   name: z.string().min(1).max(80),
   createdAt: IsoTime,
+  /**
+   * The guardian's Google address, as Google itself verified it. Kept so the ring Lambda has
+   * somewhere to send the nudge when a drill goes due. There is deliberately no learner address
+   * anywhere in this product: a learner has no account and needs no email client.
+   */
+  ownerEmail: z.email().optional(),
 });
 export type Household = z.infer<typeof Household>;
 
@@ -93,14 +99,29 @@ export function toMinutes(hhmm: string): number {
 /**
  * A drill's life:
  *
- *   scheduled ──(its time arrives, Phase 4)──▶ due ──(a session token is minted)──▶ session_pending
+ *   scheduled ──(the ring Lambda fires)──▶ due ──(a session token is minted)──▶ session_pending
  *   session_pending ──(the agent claims it, once)──▶ in_progress ──(the call ends)──▶ ended
+ *   due | session_pending ──(nobody answered in 30 minutes)──▶ missed
+ *   scheduled | due | session_pending ──(consent revoked, paused, declined)──▶ cancelled
  *
- * `cancelled` is the kill switch reaching a drill that never rang. The only transition the agent
- * performs is `session_pending` to `in_progress`, and it is a conditional write, which is what
- * makes a session token single use.
+ * Every transition is a conditional update that names the state it expects to find. Never a blind
+ * write: a scheduler firing a second after a cancellation must not resurrect the drill.
+ *
+ * `cancelled` is the kill switch reaching a drill that never rang; `missed` is a drill that rang
+ * and was not answered. The difference is the learner's, not ours — a missed drill counts against
+ * the weekly cap because their phone did ring, a cancelled one does not because nobody was called.
+ * The only transition the agent performs is `session_pending` to `in_progress`, and it is a
+ * conditional write, which is what makes a session token single use.
  */
-export const DrillState = z.enum(['scheduled', 'due', 'session_pending', 'in_progress', 'ended', 'cancelled']);
+export const DrillState = z.enum([
+  'scheduled',
+  'due',
+  'session_pending',
+  'in_progress',
+  'ended',
+  'cancelled',
+  'missed',
+]);
 export type DrillState = z.infer<typeof DrillState>;
 
 export const DrillEndReason = z.enum([
@@ -146,6 +167,15 @@ export const Drill = z.object({
   sessionJti: z.string().optional(),
   sessionExpiresAt: z.number().int().optional(),
 
+  /** When the ring Lambda flipped `scheduled` to `due`. */
+  dueAt: IsoTime.optional(),
+  /**
+   * Epoch seconds, thirty minutes after `dueAt`: the moment an unanswered drill becomes `missed`.
+   * Deliberately NOT the table's `ttl` attribute, which would delete the row instead of expiring
+   * the ring.
+   */
+  dueExpiresAt: z.number().int().optional(),
+
   startedAt: IsoTime.optional(),
   endedAt: IsoTime.optional(),
   endReason: DrillEndReason.optional(),
@@ -166,3 +196,13 @@ export type Drill = z.infer<typeof Drill>;
 export const DRILL_COOLDOWN_DAYS = 7;
 /** PRD section 7: a six minute hard cap, enforced by a timer in the agent, never by a prompt. */
 export const DRILL_MAX_SECONDS = 360;
+/** How long a ringing drill waits for an answer before it counts as missed (Phase 4 task 6). */
+export const DRILL_DUE_MINUTES = 30;
+/**
+ * "Ring now" is a demo control, and a nervous demo operator must not be able to spam a parent.
+ * Cancelled drills do not count against the weekly cap, so without this a decline could be
+ * followed immediately by another ring.
+ */
+export const RING_NOW_COOLDOWN_MINUTES = 10;
+/** Lifecycle event rows are an audit trail, not debug logging, but they do not live forever. */
+export const EVENT_TTL_DAYS = 30;

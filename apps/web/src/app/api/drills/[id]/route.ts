@@ -1,6 +1,6 @@
 import { resolveMember, type Principals } from '@/lib/access';
 import { getDrill } from '@/lib/db';
-import { toDrillView } from '@/lib/drills';
+import { settleDrill, toDrillView } from '@/lib/drills';
 import { notFound } from '@/lib/errors';
 import { handle, json } from '@/lib/http';
 import { currentPrincipals } from '@/lib/session';
@@ -31,6 +31,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { member } = await resolveMember(principals, memberIdFor(principals, request), ['learner', 'guardian']);
     const drill = await getDrill(member.memberId, id);
     if (!drill) throw notFound();
-    return json({ drill: toDrillView(drill) });
+    // A drill that rang and was never answered becomes `missed` here, on the read that noticed.
+    return json({ drill: toDrillView(await settleDrill(drill)) });
   });
 }
