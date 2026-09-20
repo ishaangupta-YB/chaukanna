@@ -80,4 +80,4 @@ jobs:
       - run: npm i -g @aws/agentcore
       - run: uv sync --frozen
       - run: uv run pytest -q          # fixture replay gates the deploy
-      - run: agentcore deploy --agent chaukanna-drill
+      - run: agentcore deploy --target chaukanna-drill -y
