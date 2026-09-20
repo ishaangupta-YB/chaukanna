@@ -1,11 +1,12 @@
 import { cookies } from 'next/headers';
 import type { Principals } from './access';
-import { GUARDIAN_COOKIE, verifyGuardianToken, type Guardian } from './auth';
+import { GUARDIAN_COOKIE, verifyGuardianToken, verifyGuardianTokenWithRevocation, type Guardian } from './auth';
 import { config } from './config';
 import { DEMO_COOKIE, demoGuardianFrom, readDemoSession, type DemoSession } from './demo';
 import { unauthorized } from './errors';
 import { LEARNER_COOKIE, readLearnerSession, type LearnerSession } from './learner-session';
 import { getInviteSigningKey } from './secrets';
+import { getGuardianHousehold } from './households';
 
 /** Next.js glue: reads the session cookies. Verification itself lives in auth.ts and learner-session.ts. */
 
@@ -18,7 +19,7 @@ import { getInviteSigningKey } from './secrets';
 export async function currentGuardian(): Promise<Guardian | null> {
   const jar = await cookies();
   const token = jar.get(GUARDIAN_COOKIE)?.value;
-  const guardian = token ? await verifyGuardianToken(token) : null;
+  const guardian = token ? await verifyGuardianTokenWithRevocation(token, (sub) => getGuardianHousehold({ sub } as Guardian)) : null;
   if (guardian) return guardian;
   if (!config.demoMode) return null;
   const demo = jar.get(DEMO_COOKIE)?.value;

@@ -72,6 +72,30 @@ export async function verifyIdToken(token: string, opts: VerifyOptions): Promise
   return { sub: c.sub, email: c.email ?? null, demo: false };
 }
 
+/**
+ * Checks if a token has been revoked by looking up the household's revocation timestamp.
+ * Returns the guardian if the token is valid and not revoked, otherwise null.
+ */
+export async function verifyGuardianTokenWithRevocation(
+  token: string,
+  getHousehold: (sub: string) => Promise<{ tokensRevokedAt?: number } | null>
+): Promise<Guardian | null> {
+  const guardian = await verifyGuardianToken(token);
+  if (!guardian) return null;
+
+  const household = await getHousehold(guardian.sub);
+  if (household?.tokensRevokedAt) {
+    // Decode token to get iat (issued at)
+    const payloadB64 = token.split('.')[1];
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    const iat = payload.iat as number;
+    if (iat && iat < household.tokensRevokedAt) {
+      return null; // Token was issued before revocation
+    }
+  }
+  return guardian;
+}
+
 function decodeJson(b64: string): unknown {
   try {
     return JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));

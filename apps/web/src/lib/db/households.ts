@@ -1,6 +1,7 @@
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, isConditionFailure, keys, table } from './client';
 import { Household } from './models';
+import { nowSeconds } from '../signing';
 
 /** Conditional create. Returns false if the household already exists (double tap). */
 export async function putHousehold(household: Household): Promise<boolean> {
@@ -42,6 +43,23 @@ export async function setHouseholdOwnerEmail(householdId: string, email: string)
       UpdateExpression: 'SET ownerEmail = :email',
       ConditionExpression: 'attribute_exists(pk)',
       ExpressionAttributeValues: { ':email': email },
+    }),
+  );
+}
+
+/**
+ * Revokes all tokens for a household by setting a revocation timestamp.
+ * Tokens issued before this timestamp will be rejected.
+ */
+export async function revokeHouseholdTokens(householdId: string): Promise<void> {
+  const now = nowSeconds();
+  await ddb().send(
+    new UpdateCommand({
+      TableName: table(),
+      Key: keys.household(householdId),
+      UpdateExpression: 'SET tokensRevokedAt = :now',
+      ConditionExpression: 'attribute_exists(pk)',
+      ExpressionAttributeValues: { ':now': now },
     }),
   );
 }

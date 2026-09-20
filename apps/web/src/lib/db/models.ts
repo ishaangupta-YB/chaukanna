@@ -22,6 +22,11 @@ export const Household = z.object({
    * anywhere in this product: a learner has no account and needs no email client.
    */
   ownerEmail: z.email().optional(),
+  /**
+   * Epoch seconds when all tokens for this household were revoked (logout).
+   * Tokens issued before this timestamp are rejected.
+   */
+  tokensRevokedAt: z.number().int().optional(),
 });
 export type Household = z.infer<typeof Household>;
 
