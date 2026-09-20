@@ -747,6 +747,29 @@ describe('runtime roles cover the calls their handlers make', () => {
     expect(statementFor(synth(), 'verifiedpermissions:IsAuthorized')).toBeDefined();
   });
 
+  it('lets the ring Lambda write its own audit row, and only that', () => {
+    /*
+     * `write_lifecycle_event` puts a DrillEvent after every `drill.due`, and it sits outside the
+     * try/except around the state change — so without PutItem the drill flips to `due`, the
+     * Lambda throws, EventBridge retries, and the audit log loses a row per scheduled drill.
+     *
+     * The grant is scoped by partition key rather than by trust: event rows are `DRILL#<id>`,
+     * drill rows are `MEMBER#<id>` and members are `HH#<id>`, so `DRILL#*` permits the audit row
+     * and cannot reach a drill, a member or a household.
+     */
+    const put = statementsForRole(synth(), 'RingLambdaServiceRole').find(
+      (statement) => ([] as string[]).concat(statement.Action).includes('dynamodb:PutItem'),
+    ) as { Condition?: Record<string, Record<string, unknown>> } | undefined;
+
+    expect(put).toBeDefined();
+    expect(put?.Condition?.['ForAllValues:StringLike']?.['dynamodb:LeadingKeys']).toEqual(['DRILL#*']);
+
+    // And still nothing that could remove one.
+    for (const statement of statementsForRole(synth(), 'RingLambdaServiceRole')) {
+      expect(([] as string[]).concat(statement.Action)).not.toContain('dynamodb:DeleteItem');
+    }
+  });
+
   it('still gives the score task no AWS permissions at all', () => {
     // The determinism claim rests on this: the model classifies, code counts, and the counting
     // reads nothing. A grant appearing here means the task grew a dependency it should not have.

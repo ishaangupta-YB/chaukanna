@@ -498,12 +498,31 @@ export class ChaukannaStack extends cdk.Stack {
     });
 
     // Reads the drill and its consent, queries GSI1 for the member's state rows, and conditionally
-    // updates the one row. No PutItem and no DeleteItem: a ring may move a drill forward, never
-    // create or destroy one.
+    // updates the one row. No DeleteItem anywhere: a ring may move a drill forward, never destroy
+    // one.
     this.ringFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem'],
         resources: [this.table.tableArn, `${this.table.tableArn}/index/*`],
+      }),
+    );
+    /*
+     * The one thing a ring creates: its own audit row. `write_lifecycle_event` puts a `DrillEvent`
+     * under the drill's partition after every `drill.due` and `drill.cancelled`, and that call is
+     * outside the try/except around the state change — so without PutItem the drill still flips to
+     * `due`, the Lambda then throws, EventBridge retries it, and the audit log quietly loses the
+     * provenance row for every scheduled drill.
+     *
+     * "A ring may never create a drill" is kept as a property rather than as a comment. Event rows
+     * live under `DRILL#<id>`; drill rows live under `MEMBER#<id>` and members under `HH#<id>`, so
+     * restricting the partition key to `DRILL#*` permits the audit row and nothing else. Verified
+     * with `aws iam simulate-custom-policy`: `DRILL#…` allowed, `MEMBER#…` and `HH#…` implicitDeny.
+     */
+    this.ringFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:PutItem'],
+        resources: [this.table.tableArn],
+        conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['DRILL#*'] } },
       }),
     );
 
