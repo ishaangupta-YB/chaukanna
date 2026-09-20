@@ -92,6 +92,19 @@ uv run python -m chaukanna_agent.local --language hi-IN   # talk to the drill, h
 uv run python scripts/rehearse.py --script digit_sharer   # typed learner, real model, no mic
 ```
 
+The same drill also runs as a server for the browser (Phase 3). AgentCore Runtime expects a
+WebSocket at `/ws` and a health check at `/ping` on port 8080, in an ARM64 container:
+
+```bash
+cd apps/agent
+DATA_REGION=ap-south-1 TABLE_NAME=chaukanna ARTIFACTS_BUCKET=<bucket> VOICE_REGION=ap-northeast-1 \
+  uv run python -m chaukanna_agent.server        # the same call, driven by a socket
+docker build --platform linux/arm64 -t chaukanna-drill .
+```
+
+Deploying it is in `handoffs/phase3_agent_handoff.md`. The image URI carries the account id, so it
+is passed as `AGENT_IMAGE=...` and never written into `cdk.json`.
+
 Prompts live in `docs/AGENT_PROMPTS.md` and are copied verbatim into
 `apps/agent/chaukanna_agent/prompts/` by `uv run python scripts/sync_prompts.py`. A test fails if they drift.
 
@@ -114,9 +127,13 @@ Prompts live in `docs/AGENT_PROMPTS.md` and are copied verbatim into
 
 In compliance with hackathon regulations, the following AI coding assistants were used to build this repository:
 - **Google Antigravity AI**
-- **Claude Code** (Anthropic), Phases 1 and 2
+- **Claude Code** (Anthropic), Phases 1, 2 and 3
 
-No third party samples or templates are copied into this repository. Libraries are used as dependencies under their own licences.
+No third party samples or templates are copied into this repository. Libraries are used as
+dependencies under their own licences. The AgentCore Runtime WebSocket contract (port 8080, `/ws`,
+`/ping`) is implemented against the published
+[AWS documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-get-started-websocket.html)
+using the Apache 2.0 licensed `bedrock-agentcore` SDK as a dependency; no sample code is copied.
 
 ---
 

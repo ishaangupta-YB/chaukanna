@@ -6,7 +6,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
  * replayed as a learner session and vice versa.
  */
 
-export type TokenPurpose = 'invite' | 'learner-session';
+export type TokenPurpose = 'invite' | 'learner-session' | 'drill-session';
 
 export function deriveKey(masterKey: string, purpose: TokenPurpose): Buffer {
   return createHmac('sha256', masterKey).update(`chaukanna:${purpose}:v1`).digest();

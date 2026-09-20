@@ -80,7 +80,12 @@ export default async function GuardianDashboard() {
                 Set window
               </Link>
             </div>
-            <MemberActions memberId={member.memberId} name={member.displayName} canPause={member.status === 'active'} />
+            <MemberActions
+              memberId={member.memberId}
+              name={member.displayName}
+              canPause={member.status === 'active'}
+              canRing={member.status === 'active'}
+            />
           </li>
         ))}
       </ul>

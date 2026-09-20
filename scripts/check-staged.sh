@@ -34,6 +34,10 @@ done <<< "$files"
 # 2. Secret material and real account identifiers inside the content being committed.
 #    Patterns only: no real value of ours is ever written into this file.
 secrets='AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN [A-Z ]*PRIVATE KEY|xox[baprs]-[0-9A-Za-z-]{10}|gh[pous]_[A-Za-z0-9]{20}|arn:aws:[a-z0-9-]*:[a-z0-9-]*:[0-9]{12}:'
+# The two account numbers AWS itself uses in documentation. Tests and comments need a realistic
+# ARN to be worth reading, and these belong to nobody. Every other twelve digit account still
+# trips the rule above.
+placeholder_accounts=':(123456789012|000000000000):'
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   # The guard itself spells out the patterns it looks for.
@@ -42,9 +46,10 @@ while IFS= read -r f; do
     *.lock|*lock.json|*.pcm|*.wav|*.png|*.ico) continue ;;
   esac
   content=$(show "$ref" "$f") || continue
-  if printf '%s' "$content" | grep -qIE "$secrets"; then
+  hit=$(printf '%s' "$content" | grep -oIE "$secrets" | grep -vE "$placeholder_accounts" | head -1)
+  if [ -n "$hit" ]; then
     reject "$f"
-    note "matches a secret or account-id pattern: $(printf '%s' "$content" | grep -oIE "$secrets" | head -1 | cut -c1-12)…"
+    note "matches a secret or account-id pattern: $(printf '%s' "$hit" | cut -c1-12)…"
   fi
   # A filled-in template is the easiest way to leak pool ids by accident.
   case "$f" in

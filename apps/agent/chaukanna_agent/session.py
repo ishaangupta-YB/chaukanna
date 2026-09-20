@@ -10,11 +10,11 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from .clock import utc_now_iso
 from .log import event
 from .safety import caller_violations
 from .tripwire import REDACTED, redact, trips
@@ -110,7 +110,7 @@ class DrillSession:
         self.max_seconds = max_seconds
         self._clock = clock
         self._t0 = clock()
-        self.started_at = datetime.now(UTC).isoformat()
+        self.started_at = utc_now_iso()
         self.ended_at: str | None = None
 
         self.stage: Stage = "S0"
@@ -140,7 +140,7 @@ class DrillSession:
     def log(self, type_: str, level: int = logging.INFO, **payload: Any) -> DrillEvent:
         entry = DrillEvent(
             seq=self._next_seq(),
-            ts=datetime.now(UTC).isoformat(),
+            ts=utc_now_iso(),
             t=self.elapsed(),
             type=type_,
             stage=self.stage,
@@ -236,7 +236,7 @@ class DrillSession:
             return False
         self.end_reason = reason
         self.end_source = source
-        self.ended_at = datetime.now(UTC).isoformat()
+        self.ended_at = utc_now_iso()
         self.log("session_ended", reason=reason, source=source, **payload)
         self.ended.set()
         return True

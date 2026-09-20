@@ -37,3 +37,40 @@ class AgentSettings(BaseModel):
         if env.get("SAFE_WORD_SPELLINGS"):
             values["safe_word_spellings"] = [s for s in env["SAFE_WORD_SPELLINGS"].split(",") if s.strip()]
         return cls.model_validate(values)
+
+
+class ServerSettings(BaseModel):
+    """What the WebSocket server needs on top of the agent itself.
+
+    `data_region` is deliberately not `AWS_REGION`. Inside AgentCore that variable is the region
+    the container happens to run in, which is the voice region, not the region the table and the
+    bucket live in. Reading it would point every write at the wrong account resources and fail
+    only at runtime.
+    """
+
+    agent: AgentSettings
+    data_region: str = Field(min_length=1)
+    table_name: str = Field(min_length=1)
+    artifacts_bucket: str = Field(min_length=1)
+    scenario_id: str = "digital_arrest_v1"
+    # Phase 2's decision, carried forward: without the pre-rendered asset the drill still ends on
+    # time, it just ends silently. See handoffs/phase2_agent_handoff.md.
+    allow_missing_break_audio: bool = True
+
+    @classmethod
+    def from_env(cls) -> ServerSettings:
+        env = os.environ
+        missing = [name for name in ("DATA_REGION", "TABLE_NAME", "ARTIFACTS_BUCKET") if not env.get(name)]
+        if missing:
+            raise RuntimeError(f"missing required environment variables: {', '.join(missing)}")
+        values: dict[str, object] = {
+            "agent": AgentSettings.from_env(),
+            "data_region": env["DATA_REGION"],
+            "table_name": env["TABLE_NAME"],
+            "artifacts_bucket": env["ARTIFACTS_BUCKET"],
+        }
+        if env.get("SCENARIO_ID"):
+            values["scenario_id"] = env["SCENARIO_ID"]
+        if env.get("ALLOW_MISSING_BREAK_AUDIO"):
+            values["allow_missing_break_audio"] = env["ALLOW_MISSING_BREAK_AUDIO"].lower() not in ("0", "false", "no")
+        return cls.model_validate(values)

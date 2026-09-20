@@ -38,7 +38,9 @@
 ---
 
 ## Phase 3: The Agent, in the Browser
-<!-- To be populated upon completion of Phase 3 -->
+
+### Member A (Voice Agent & Runtime)
+*Amplify SSR serves requests, not long-lived sockets, so the browser connects straight to AgentCore and the route handler's job is to hand it a SigV4 presigned `wss://` URL, because a browser cannot sign a handshake either. Writing that presigner by hand rather than adding three dependencies paid off twice over: for `bedrock-agentcore` the canonical request signs the path encoded a second time, so `%3A` becomes `%253A`, and the payload hash is the SHA-256 of the empty string rather than the `UNSIGNED-PAYLOAD` constant that only S3 uses. Both mistakes surface as a bare 403 on the handshake with nothing in the message, so we pinned the output byte for byte against URLs botocore's own signer produced. Keeping the transport behind the same `AudioSource` and `AudioSink` interfaces the terminal already used meant `drill.py` needed no changes at all, and the whole safety core — tripwire, safe word, cap, stage machine — reached the browser untouched. The two bugs worth the trip were only findable by running the real thing: Python's `isoformat()` emits an offset where JavaScript emits `Z`, so the agent wrote a drill row successfully and the learner's own result page then threw a 500 reading it back; and denying the microphone prompt marked the drill ended, which burned the learner's one practice call for the week over a permission dialog. A drill that never became a call is now cancelled rather than ended, and cancelled drills do not count against the cap. Recording only the caller's half of the audio was the easy call: the learner's microphone is the one place a real Aadhaar number could survive the tripwire, and nothing in the MVP needs it.*
 
 ---
 

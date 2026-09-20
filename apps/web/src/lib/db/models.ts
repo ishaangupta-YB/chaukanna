@@ -89,3 +89,80 @@ export function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
 }
+
+/**
+ * A drill's life:
+ *
+ *   scheduled ──(its time arrives, Phase 4)──▶ due ──(a session token is minted)──▶ session_pending
+ *   session_pending ──(the agent claims it, once)──▶ in_progress ──(the call ends)──▶ ended
+ *
+ * `cancelled` is the kill switch reaching a drill that never rang. The only transition the agent
+ * performs is `session_pending` to `in_progress`, and it is a conditional write, which is what
+ * makes a session token single use.
+ */
+export const DrillState = z.enum(['scheduled', 'due', 'session_pending', 'in_progress', 'ended', 'cancelled']);
+export type DrillState = z.infer<typeof DrillState>;
+
+export const DrillEndReason = z.enum([
+  'completed',
+  'safe_word',
+  'is_this_real',
+  'distress',
+  'tripwire',
+  'timeout',
+  'hangup',
+  'model_ended',
+  'error',
+]);
+export type DrillEndReason = z.infer<typeof DrillEndReason>;
+
+/**
+ * What the drill row keeps about a red flag: which one, and where. Never the quote. The quote is
+ * transcript text, and a guardian may not read a transcript (PRD F7 AC2), so it stays in the S3
+ * object that only the scoring pipeline opens.
+ */
+export const RedFlagMark = z.object({
+  id: z.string().min(1).max(40),
+  stage: z.string().min(1).max(4),
+  seq: z.number().int().nonnegative(),
+});
+export type RedFlagMark = z.infer<typeof RedFlagMark>;
+
+export const Drill = z.object({
+  drillId: Id,
+  memberId: Id,
+  householdId: Id,
+  scenarioId: z.string().min(1).max(64),
+  language: Language,
+  state: DrillState,
+  /** Also the timestamp inside the sort key, so it addresses the row. */
+  scheduledAt: IsoTime,
+  createdAt: IsoTime,
+  updatedAt: IsoTime,
+  createdBy: z.enum(['guardian', 'learner', 'scheduler']),
+  maxSeconds: z.number().int().min(10).max(900),
+
+  /** Set while a session token is outstanding; the agent's claim removes both. */
+  sessionJti: z.string().optional(),
+  sessionExpiresAt: z.number().int().optional(),
+
+  startedAt: IsoTime.optional(),
+  endedAt: IsoTime.optional(),
+  endReason: DrillEndReason.optional(),
+  endSource: z.string().max(60).optional(),
+  finalStage: z.string().max(4).optional(),
+  durationSeconds: z.number().nonnegative().optional(),
+  redFlags: z.array(RedFlagMark).optional(),
+  scenarioVersion: z.number().int().optional(),
+  voice: z.string().max(40).optional(),
+  promptVersions: z.record(z.string(), z.string()).optional(),
+  /** S3 keys written by the agent. The web app never reads their contents in Phase 3. */
+  transcriptKey: z.string().max(256).optional(),
+  audioKey: z.string().max(256).optional(),
+});
+export type Drill = z.infer<typeof Drill>;
+
+/** One drill per learner per seven days (PRD F3 AC3). */
+export const DRILL_COOLDOWN_DAYS = 7;
+/** PRD section 7: a six minute hard cap, enforced by a timer in the agent, never by a prompt. */
+export const DRILL_MAX_SECONDS = 360;

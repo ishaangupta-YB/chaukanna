@@ -6,13 +6,14 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from datetime import UTC, datetime
+
+from .clock import utc_now_iso
 
 _events = logging.getLogger("chaukanna_agent.events")
 
 
 def event(name: str, drill_id: str, level: int = logging.INFO, **fields: object) -> None:
-    line = {"ts": datetime.now(UTC).isoformat(), "event": name, "drillId": drill_id, **fields}
+    line = {"ts": utc_now_iso(), "event": name, "drillId": drill_id, **fields}
     _events.log(level, json.dumps(line, ensure_ascii=False, default=str))
 
 

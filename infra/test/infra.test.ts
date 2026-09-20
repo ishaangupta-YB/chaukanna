@@ -96,6 +96,40 @@ describe('ChaukannaStack', () => {
     });
   });
 
+  test('audio expires in 7 days and the transcript in 30, under their own prefixes', () => {
+    // PRD section 8.6. Lifecycle rules are per prefix, so the two cannot share a folder.
+    const bucket = Object.values(synth().findResources('AWS::S3::Bucket'))[0];
+    const rules: { Prefix: string; ExpirationInDays: number }[] = bucket.Properties.LifecycleConfiguration.Rules;
+    const byPrefix = Object.fromEntries(rules.map((rule) => [rule.Prefix, rule.ExpirationInDays]));
+    expect(byPrefix['drill/audio/']).toBe(7);
+    expect(byPrefix['drill/transcript/']).toBe(30);
+    expect(byPrefix['drill/']).toBeUndefined();
+  });
+
+  test('compute role may open a drill socket, in the voice region only', () => {
+    const template = synth();
+    const statements = Object.values(template.findResources('AWS::IAM::Policy')).flatMap(
+      (policy) => policy.Properties.PolicyDocument.Statement as { Action: string | string[]; Resource: unknown }[],
+    );
+    const socket = statements.find((statement) =>
+      ([] as string[])
+        .concat(statement.Action)
+        .includes('bedrock-agentcore:InvokeAgentRuntimeWithWebSocketStream'),
+    );
+    expect(socket).toBeDefined();
+    const resource = JSON.stringify(socket!.Resource);
+    expect(resource).toContain('ap-northeast-1');
+    expect(resource).toContain('runtime/');
+    // Presigning a URL is all it may do: it must not be able to change or delete a runtime.
+    for (const statement of statements) {
+      for (const action of ([] as string[]).concat(statement.Action)) {
+        if (action.startsWith('bedrock-agentcore:')) {
+          expect(action).toBe('bedrock-agentcore:InvokeAgentRuntimeWithWebSocketStream');
+        }
+      }
+    }
+  });
+
   test('compute role trusts Amplify and has no wildcard actions', () => {
     const template = synth();
     template.hasResourceProperties('AWS::IAM::Role', {

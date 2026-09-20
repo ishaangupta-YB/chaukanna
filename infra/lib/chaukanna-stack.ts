@@ -12,10 +12,17 @@ export interface ChaukannaStackProps extends cdk.StackProps {
    * Added to the Cognito callback and logout URLs next to localhost.
    */
   appUrl?: string;
+  /**
+   * Where the voice path runs. The app and the data are in `ap-south-1`; Nova 2 Sonic is not
+   * offered there, so the agent runtime the browser connects to lives in this region instead.
+   */
+  voiceRegion?: string;
 }
 
 const LOCAL_APP_URL = 'http://localhost:3000';
 const AUTH_CALLBACK_PATH = '/api/auth/callback';
+/** Nova 2 Sonic is not in `ap-south-1`; the voice path runs in Tokyo. */
+const DEFAULT_VOICE_REGION = 'ap-northeast-1';
 
 export class ChaukannaStack extends cdk.Stack {
   public readonly table: dynamodb.Table;
@@ -49,6 +56,7 @@ export class ChaukannaStack extends cdk.Stack {
 
     // Origins of the web app: localhost for development plus the Amplify URL once it exists.
     const appUrls = [LOCAL_APP_URL, ...(props?.appUrl ? [props.appUrl.replace(/\/+$/, '')] : [])];
+    const voiceRegion = props?.voiceRegion ?? DEFAULT_VOICE_REGION;
 
     // 2. S3 Bucket for drill recordings, consent, and debrief artifacts
     this.artifactsBucket = new s3.Bucket(this, 'Artifacts', {
@@ -56,9 +64,13 @@ export class ChaukannaStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
+      // PRD section 8.6: call audio is kept 7 days, the redacted transcript 30. Lifecycle rules
+      // are per prefix, so those two live under different prefixes rather than in one folder per
+      // drill. `chaukanna_agent/store.py` writes exactly these keys.
       lifecycleRules: [
         { prefix: 'consent/', expiration: cdk.Duration.days(365) },
-        { prefix: 'drill/', expiration: cdk.Duration.days(7) },
+        { prefix: 'drill/audio/', expiration: cdk.Duration.days(7) },
+        { prefix: 'drill/transcript/', expiration: cdk.Duration.days(30) },
         { prefix: 'debrief/', expiration: cdk.Duration.days(30) },
       ],
       // Browsers upload with presigned PUTs from our own pages only.
@@ -169,6 +181,18 @@ export class ChaukannaStack extends cdk.Stack {
     );
     this.inviteSigningKey.grantRead(this.computeRole);
 
+    // Presigning the WebSocket URL a learner's browser opens. The resource is a prefix rather
+    // than one runtime because the runtime lives in another region and another stack, so its ARN
+    // is not knowable here; it stays inside this account and this region's runtimes.
+    this.computeRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['bedrock-agentcore:InvokeAgentRuntimeWithWebSocketStream'],
+        resources: [
+          `arn:${cdk.Aws.PARTITION}:bedrock-agentcore:${voiceRegion}:${cdk.Stack.of(this).account}:runtime/*`,
+        ],
+      }),
+    );
+
     // Tag everything in stack
     cdk.Tags.of(this).add('project', 'chaukanna');
 
@@ -219,7 +243,7 @@ export class ChaukannaStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'VoiceRegion', {
-      value: 'ap-northeast-1',
+      value: voiceRegion,
       description: 'Voice Agent AWS Region (Bedrock Nova 2 Sonic)',
     });
   }

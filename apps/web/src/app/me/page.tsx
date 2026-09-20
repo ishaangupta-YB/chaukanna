@@ -4,6 +4,7 @@ import { other, pickLang } from '@/components/learner/lang';
 import { loadLearnerMember } from '@/components/learner/learner-page';
 import { StopAllButton } from '@/components/learner/StopAllButton';
 import { WithdrawButton } from '@/components/learner/WithdrawButton';
+import { pendingDrill } from '@/lib/drills';
 import { t, windowSummary, type MessageKey } from '@/lib/i18n';
 import { windowOrDefault } from '@/lib/members';
 
@@ -29,7 +30,10 @@ export default async function LearnerHome({ searchParams }: { searchParams: Prom
   }
 
   const lang = pickLang(langParam, member.language);
-  const { window } = await windowOrDefault(member.memberId);
+  const [{ window }, waiting] = await Promise.all([
+    windowOrDefault(member.memberId),
+    pendingDrill(member.memberId),
+  ]);
   const active = member.status === 'active';
   return (
     <LearnerShell
@@ -38,6 +42,17 @@ export default async function LearnerHome({ searchParams }: { searchParams: Prom
       footer={active ? <StopAllButton lang={lang} memberId={member.memberId} /> : undefined}
     >
       <h1 className="text-3xl font-bold">{t(lang, 'homeGreeting', { name: member.displayName })}</h1>
+      {active && waiting && (
+        <section className="flex flex-col gap-3 rounded-2xl border-2 border-emerald-700 bg-emerald-50 p-5">
+          <p className="text-2xl font-semibold text-emerald-900">{t(lang, 'homeCallWaiting')}</p>
+          <Link
+            href={`/drill/${waiting.drillId}?lang=${lang}`}
+            className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-emerald-700 px-6 py-3 text-center text-2xl font-bold text-white"
+          >
+            {t(lang, 'homeOpenCall')}
+          </Link>
+        </section>
+      )}
       <p
         className={`rounded-2xl p-5 text-2xl font-bold ${active ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-900'}`}
       >

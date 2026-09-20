@@ -26,6 +26,23 @@ export const keys = {
   consentPrefix: 'CONSENT#',
   memberPk: (memberId: string) => `MEMBER#${memberId}`,
   window: (memberId: string) => ({ pk: `MEMBER#${memberId}`, sk: 'WINDOW#current' }),
+  /**
+   * The scheduled time is inside the sort key, so drills come back newest first for free and the
+   * agent can address a row from its session token alone. `chaukanna_agent/store.py` builds the
+   * same two strings; change them together.
+   */
+  drill: (memberId: string, scheduledAt: string, drillId: string) => ({
+    pk: `MEMBER#${memberId}`,
+    sk: `DRILL#${scheduledAt}#${drillId}`,
+  }),
+  drillPrefix: 'DRILL#',
+  drillEvents: (drillId: string) => `DRILL#${drillId}`,
+  eventPrefix: 'EVT#',
+};
+
+/** GSI1 lets Phase 4's scheduler sweep drills by state without scanning. */
+export const gsi1 = {
+  state: (state: string) => `STATE#${state}`,
 };
 
 export function isConditionFailure(error: unknown): boolean {

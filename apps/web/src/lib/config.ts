@@ -33,6 +33,17 @@ export const config = {
   get artifactsBucket(): string {
     return required('ARTIFACTS_BUCKET');
   },
+  /**
+   * Where Nova 2 Sonic is offered, and so where the agent runtime lives. Not `ap-south-1`: the
+   * voice path is in Tokyo because the model is not in Mumbai.
+   */
+  get voiceRegion(): string {
+    return required('VOICE_REGION');
+  },
+  /** The AgentCore Runtime the browser opens a WebSocket against, from `agentcore deploy`. */
+  get agentRuntimeArn(): string {
+    return required('AGENT_RUNTIME_ARN');
+  },
   get userPoolId(): string {
     return required('USER_POOL_ID');
   },

@@ -1,0 +1,13 @@
+# Keep the image to the agent and its dependencies. Everything below is either large, local, or
+# must never leave this machine.
+.venv/
+runs/
+tests/
+scripts/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+uv.lock
+.env
+.env.*

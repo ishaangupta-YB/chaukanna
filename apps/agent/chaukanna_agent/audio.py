@@ -101,6 +101,44 @@ class AudioSink:
         return None
 
 
+class CallerRecorder(AudioSink):
+    """Wraps a sink and keeps a copy of everything the caller said, for the drill's audio object.
+
+    Only the caller. The learner's microphone is never recorded anywhere in this product, because
+    the one thing it might contain is the number the tripwire exists to stop.
+
+    What is kept is what was *sent*, which on a barge-in is slightly more than what was *heard*:
+    the tail the learner talked over is in the file. Erring that way keeps the recording a
+    faithful record of what the caller said, which is what the debrief quotes from.
+    """
+
+    def __init__(self, inner: AudioSink, *, max_seconds: float) -> None:
+        self._inner = inner
+        self._max_bytes = int(max_seconds * BYTES_PER_SECOND)
+        self._captured = bytearray()
+
+    @property
+    def caller_pcm(self) -> bytes:
+        return bytes(self._captured)
+
+    async def start(self) -> None:
+        await self._inner.start()
+
+    def play(self, pcm: bytes) -> None:
+        if len(self._captured) < self._max_bytes:
+            self._captured.extend(pcm[: self._max_bytes - len(self._captured)])
+        self._inner.play(pcm)
+
+    def clear(self) -> None:
+        self._inner.clear()
+
+    async def drain(self) -> None:
+        await self._inner.drain()
+
+    async def stop(self) -> None:
+        await self._inner.stop()
+
+
 class AudioSource:
     """Where learner audio comes from. `read` returns one chunk of PCM."""
 
