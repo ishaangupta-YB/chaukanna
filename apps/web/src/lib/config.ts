@@ -22,6 +22,9 @@ function required(name: string): string {
 /** Secrets Manager id of the HMAC key for invite links and learner sessions. */
 export const INVITE_SIGNING_KEY_SECRET_ID = 'chaukanna/invite-signing-key';
 
+/** Verified Permissions policy store ID for authorization. */
+export const POLICY_STORE_ID = 'POLICY_STORE_ID';
+
 export const config = {
   /** Set by the Amplify SSR runtime (the `AWS_` prefix is reserved there) and by .env.local. */
   get region(): string {
@@ -90,5 +93,8 @@ export const config = {
    */
   get demoMode(): boolean {
     return process.env.DEMO_MODE === 'on';
+  },
+  get policyStoreId(): string {
+    return required(POLICY_STORE_ID);
   },
 };

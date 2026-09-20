@@ -5,6 +5,7 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as bedrock from 'aws-cdk-lib/aws-bedrock';
+import * as vp from 'aws-cdk-lib/aws-verifiedpermissions';
 import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
 import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as logs from 'aws-cdk-lib/aws-logs';
@@ -78,6 +79,7 @@ export class ChaukannaStack extends cdk.Stack {
   public readonly schedulerInvokeRole: iam.Role;
   public readonly guardrail: bedrock.CfnGuardrail;
   public readonly scoringStateMachine: sfn.StateMachine;
+  public readonly policyStore: vp.CfnPolicyStore;
 
   constructor(scope: Construct, id: string, props?: ChaukannaStackProps) {
     super(scope, id, props);
@@ -113,15 +115,23 @@ export class ChaukannaStack extends cdk.Stack {
       // PRD section 8.6: call audio is kept 7 days, the redacted transcript 30. Lifecycle rules
       // are per prefix, so those two live under different prefixes rather than in one folder per
       // drill. `chaukanna_agent/store.py` writes exactly these keys.
+      // Named ids, because these rules are a demo asset as much as a control: a judge opens the
+      // Management tab of this bucket and reads the retention promise off the console in five
+      // seconds (phase 6 task 6).
       lifecycleRules: [
-        { prefix: 'consent/', expiration: cdk.Duration.days(365) },
-        { prefix: 'drill/audio/', expiration: cdk.Duration.days(7) },
-        { prefix: 'drill/transcript/', expiration: cdk.Duration.days(30) },
+        { id: 'consent-365-days', prefix: 'consent/', expiration: cdk.Duration.days(365) },
+        { id: 'drill-audio-7-days', prefix: 'drill/audio/', expiration: cdk.Duration.days(7) },
+        { id: 'drill-transcript-30-days', prefix: 'drill/transcript/', expiration: cdk.Duration.days(30) },
         // What the guardrail wrote back after redaction. Same 30 days as the raw transcript it
         // was made from: a redacted copy that outlived its original would be the longer-lived
         // record of the same conversation.
-        { prefix: 'drill/redacted/', expiration: cdk.Duration.days(30) },
-        { prefix: 'debrief/', expiration: cdk.Duration.days(30) },
+        { id: 'drill-redacted-30-days', prefix: 'drill/redacted/', expiration: cdk.Duration.days(30) },
+        // The learner's own coaching text and its audio. Longer than the transcript it was made
+        // from because it is the only thing they can go back to, and it carries no quotes of the
+        // call that are not already redacted.
+        { id: 'debrief-90-days', prefix: 'debrief/', expiration: cdk.Duration.days(90) },
+        // A browser that dropped mid-upload leaves parts nobody can see and everybody pays for.
+        { id: 'abort-incomplete-uploads', abortIncompleteMultipartUploadAfter: cdk.Duration.days(7) },
       ],
       // Browsers upload with presigned PUTs from our own pages only.
       cors: [
@@ -247,6 +257,146 @@ export class ChaukannaStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // 8b. Verified Permissions policy store for authorization (created before compute role).
+    //
+    // Schema defines the entity types and actions. Policies are Cedar statements.
+    // Phase 6 tasks: ViewBand, ViewTranscript, ScheduleDrill, TakeDrill.
+    // If VP is not available in ap-south-1, the stack deploy will fail; in that case
+    // deploy the policy store in a supported region and call cross-region.
+    this.policyStore = new vp.CfnPolicyStore(this, 'PolicyStore', {
+      description: 'Chaukanna authorization policies for drill access',
+      validationSettings: { mode: 'STRICT' },
+      schema: {
+        // Cedar JSON is keyed by NAMESPACE. Without the `Chaukanna` wrapper the service
+        // rejects it with "unknown field `Household`" — the namespace, not the entity type.
+        cedarJson: JSON.stringify({
+          Chaukanna: {
+          entityTypes: {
+            Household: {
+              shape: {
+                type: 'Record',
+                attributes: {
+                  householdId: { type: 'String' },
+                },
+              },
+            },
+            /*
+             * STRICT validation treats a declared attribute as required unless it says
+             * otherwise, and rejects a request whose entity omits one. So only what the
+             * policies actually read is required, and `lib/authz.ts` always supplies it.
+             */
+            Member: {
+              shape: {
+                type: 'Record',
+                attributes: {
+                  memberId: { type: 'String' },
+                  householdId: { type: 'String' },
+                  status: { type: 'String' },
+                  transcriptSharing: { type: 'Boolean', required: false },
+                },
+              },
+            },
+            Drill: {
+              shape: {
+                type: 'Record',
+                attributes: {
+                  householdId: { type: 'String' },
+                  memberId: { type: 'String' },
+                  transcriptSharing: { type: 'Boolean' },
+                  drillId: { type: 'String', required: false },
+                  state: { type: 'String', required: false },
+                },
+              },
+            },
+          },
+          actions: {
+            ViewBand: {
+              appliesTo: { principalTypes: ['Member'], resourceTypes: ['Drill'] },
+            },
+            ViewTranscript: {
+              appliesTo: { principalTypes: ['Member'], resourceTypes: ['Drill'] },
+            },
+            ScheduleDrill: {
+              appliesTo: { principalTypes: ['Member'], resourceTypes: ['Member'] },
+            },
+            TakeDrill: {
+              appliesTo: { principalTypes: ['Member'], resourceTypes: ['Drill'] },
+            },
+          },
+          },
+        }),
+      },
+    });
+
+    // Policy: Guardians can view band for drills in their household
+    new vp.CfnPolicy(this, 'GuardianViewBandPolicy', {
+      policyStoreId: this.policyStore.attrPolicyStoreId,
+      definition: {
+        static: {
+          description: 'Guardians can always see outcomes (band) for their household',
+          statement: `permit(principal, action == Chaukanna::Action::"ViewBand", resource) when { resource.householdId == principal.householdId };`,
+        },
+      },
+    });
+
+    // Policy: Transcripts only when learner granted sharing
+    new vp.CfnPolicy(this, 'GuardianViewTranscriptPolicy', {
+      policyStoreId: this.policyStore.attrPolicyStoreId,
+      definition: {
+        static: {
+          description: 'Transcripts only when learner has granted sharing',
+          statement: `permit(principal, action == Chaukanna::Action::"ViewTranscript", resource) when { resource.householdId == principal.householdId && resource.transcriptSharing == true };`,
+        },
+      },
+    });
+
+    // Policy: Guardians schedule drills for members of their own household.
+    //
+    // Cedar is default deny, so the forbid below is not a policy on its own: without this
+    // permit, ScheduleDrill would be denied for everyone, paused or not.
+    new vp.CfnPolicy(this, 'GuardianScheduleDrillPolicy', {
+      policyStoreId: this.policyStore.attrPolicyStoreId,
+      definition: {
+        static: {
+          description: 'Guardians can schedule a drill for a member of their own household',
+          statement: `permit(principal, action == Chaukanna::Action::"ScheduleDrill", resource) when { resource.householdId == principal.householdId };`,
+        },
+      },
+    });
+
+    // Policy: Cannot schedule for paused learner
+    new vp.CfnPolicy(this, 'NoSchedulePausedPolicy', {
+      policyStoreId: this.policyStore.attrPolicyStoreId,
+      definition: {
+        static: {
+          description: 'A paused learner cannot be scheduled by anyone',
+          statement: `forbid(principal, action == Chaukanna::Action::"ScheduleDrill", resource) when { resource.status == "paused" };`,
+        },
+      },
+    });
+
+    // Policy: Learner can take their own drill
+    new vp.CfnPolicy(this, 'LearnerTakeDrillPolicy', {
+      policyStoreId: this.policyStore.attrPolicyStoreId,
+      definition: {
+        static: {
+          description: 'Learner can take their own drill',
+          statement: `permit(principal, action == Chaukanna::Action::"TakeDrill", resource) when { resource.memberId == principal.memberId };`,
+        },
+      },
+    });
+
+    // Policy: Learner can view their own transcript
+    new vp.CfnPolicy(this, 'LearnerViewTranscriptPolicy', {
+      policyStoreId: this.policyStore.attrPolicyStoreId,
+      definition: {
+        static: {
+          description: 'Learner can view their own transcript',
+          statement: `permit(principal, action == Chaukanna::Action::"ViewTranscript", resource) when { resource.memberId == principal.memberId };`,
+        },
+      },
+    });
+
     // 8. Amplify SSR compute role. Route handlers run with exactly these permissions.
     this.computeRole = new iam.Role(this, 'AmplifyComputeRole', {
       roleName: 'chaukanna-amplify-compute-role',
@@ -284,6 +434,14 @@ export class ChaukannaStack extends cdk.Stack {
         resources: [
           `arn:${cdk.Aws.PARTITION}:bedrock-agentcore:${voiceRegion}:${cdk.Stack.of(this).account}:runtime/*`,
         ],
+      }),
+    );
+
+    // Verified Permissions: allow IsAuthorized calls from route handlers
+    this.computeRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['verifiedpermissions:IsAuthorized'],
+        resources: [this.policyStore.attrArn],
       }),
     );
 
@@ -846,6 +1004,11 @@ export class ChaukannaStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'VoiceRegion', {
       value: voiceRegion,
       description: 'Voice Agent AWS Region (Bedrock Nova 2 Sonic)',
+    });
+
+    new cdk.CfnOutput(this, 'PolicyStoreId', {
+      value: this.policyStore.attrPolicyStoreId,
+      description: 'Verified Permissions policy store ID for authorization',
     });
   }
 }

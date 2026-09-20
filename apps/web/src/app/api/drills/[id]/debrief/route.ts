@@ -1,4 +1,5 @@
 import { resolveMember } from '@/lib/access';
+import { buildDrillResource, buildLearnerPrincipal, requireAuthz, VP_ACTIONS } from '@/lib/authz';
 import { getDrill } from '@/lib/db';
 import { learnerDebrief } from '@/lib/debrief';
 import { notFound } from '@/lib/errors';
@@ -25,6 +26,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const { id } = await params;
     const drill = await getDrill(member.memberId, id);
     if (!drill) throw notFound();
+    /*
+     * The debrief is transcript text, so the decision belongs in policy: the learner's own
+     * `permit` covers them whatever their sharing switch says, and anyone else is denied.
+     */
+    await requireAuthz(
+      buildLearnerPrincipal(member.memberId, member.householdId, member.status),
+      VP_ACTIONS.VIEW_TRANSCRIPT,
+      buildDrillResource(drill.drillId, drill.householdId, drill.memberId, member.transcriptSharing),
+    );
     return json(await learnerDebrief(drill));
   });
 }
