@@ -12,9 +12,9 @@ import os
 
 DATA_REGION_DEFAULT = "ap-south-1"
 
-# Verified live against account 810225483947: the bare model id fails with "Invocation ... with
-# on-demand throughput isn't supported". An inference profile is required, and the `global.`
-# profile is ACTIVE in ap-south-1.
+# Verified live: the bare model id fails with "Invocation ... with on-demand throughput
+# isn't supported". An inference profile is required, and the `global.` profile is ACTIVE
+# in ap-south-1.
 JUDGE_MODEL_ID_DEFAULT = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # There is no `hi-IN` Polly voice: `describe-voices --language-code hi-IN` returns []. Kajal is the

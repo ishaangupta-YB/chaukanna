@@ -199,7 +199,7 @@ def test_events_are_batched_with_a_ttl(store: DrillStore, record: DrillRecord) -
 
 # ---- handing the drill to scoring ----------------------------------------------------------------
 
-SCORING_ARN = "arn:aws:states:ap-south-1:810225483947:stateMachine:chaukanna-scoring"
+SCORING_ARN = "arn:aws:states:ap-south-1:123456789012:stateMachine:chaukanna-scoring"
 
 
 @pytest.fixture

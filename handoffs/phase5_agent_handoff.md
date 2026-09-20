@@ -87,7 +87,7 @@ number**. Debrief alone → still `scored`, band kept, no audio.
 
 ```bash
 cd infra && AWS_PROFILE=chaukanna npx cdk deploy ChaukannaStack        # guardrail, lambdas, SFN
-export AGENT_IMAGE=810225483947.dkr.ecr.ap-northeast-1.amazonaws.com/chaukanna-drill:clockfix-134839
+export AGENT_IMAGE=<ACCOUNT_ID>.dkr.ecr.ap-northeast-1.amazonaws.com/chaukanna-drill:clockfix-134839
 AWS_PROFILE=chaukanna npx cdk deploy ChaukannaVoiceStack               # env var + StartExecution
 ```
 
