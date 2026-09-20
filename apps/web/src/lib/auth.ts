@@ -11,6 +11,7 @@ import { nowSeconds } from './signing';
 export const GUARDIAN_COOKIE = 'ck_guardian';
 export const OAUTH_COOKIE = 'ck_oauth';
 const CLOCK_SKEW_SECONDS = 60;
+/** Minimum interval between JWKS fetches (5 minutes). Also used for proactive refresh interval. */
 const JWKS_REFRESH_MIN_INTERVAL_MS = 5 * 60 * 1000;
 
 export interface Guardian {
@@ -88,22 +89,64 @@ export function cognitoIssuer(): string {
 const Jwks = z.object({ keys: z.array(z.object({ kid: z.string() }).passthrough()) });
 let jwksCache: Map<string, KeyObject> = new Map();
 let jwksFetchedAt = 0;
+let jwksRefreshPromise: Promise<void> | null = null;
 
-/** Pool JWKS, cached per process, refetched on an unknown kid at most every five minutes. */
+/** Proactively refresh JWKS in the background. Returns a promise that resolves when refresh is done. */
+async function refreshJwks(): Promise<void> {
+  // If a refresh is already in progress, wait for it
+  if (jwksRefreshPromise) {
+    await jwksRefreshPromise;
+    return;
+  }
+
+  // Check if we should skip refresh (too soon since last fetch)
+  if (Date.now() - jwksFetchedAt < JWKS_REFRESH_MIN_INTERVAL_MS && jwksCache.size > 0) {
+    return;
+  }
+
+  jwksRefreshPromise = (async () => {
+    try {
+      const res = await fetch(`${cognitoIssuer()}/.well-known/jwks.json`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`jwks fetch failed with ${res.status}`);
+      const parsed = Jwks.parse(await res.json());
+      const next = new Map<string, KeyObject>();
+      for (const jwk of parsed.keys) {
+        next.set(jwk.kid, createPublicKey({ key: jwk as JsonWebKey, format: 'jwk' }));
+      }
+      jwksCache = next;
+      jwksFetchedAt = Date.now();
+    } finally {
+      jwksRefreshPromise = null;
+    }
+  })();
+
+  await jwksRefreshPromise;
+}
+
+/** Start the proactive JWKS refresh timer. Call once at app startup. */
+export function startJwksRefresh(): void {
+  // Initial fetch
+  refreshJwks().catch(() => {
+    // Log but don't throw - initial fetch failure shouldn't crash the app
+    console.warn('Initial JWKS fetch failed, will retry on first use');
+  });
+
+  // Periodic refresh
+  setInterval(() => {
+    refreshJwks().catch(() => {
+      // Silently fail - next attempt will be at the next interval
+      console.warn('Periodic JWKS refresh failed');
+    });
+  }, JWKS_REFRESH_MIN_INTERVAL_MS);
+}
+
+/** Pool JWKS, cached per process, refreshed proactively and on unknown kid. */
 export const cognitoKeyResolver: KeyResolver = async (kid) => {
   const hit = jwksCache.get(kid);
   if (hit) return hit;
-  if (Date.now() - jwksFetchedAt < JWKS_REFRESH_MIN_INTERVAL_MS && jwksCache.size > 0) return null;
 
-  const res = await fetch(`${cognitoIssuer()}/.well-known/jwks.json`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`jwks fetch failed with ${res.status}`);
-  const parsed = Jwks.parse(await res.json());
-  const next = new Map<string, KeyObject>();
-  for (const jwk of parsed.keys) {
-    next.set(jwk.kid, createPublicKey({ key: jwk as JsonWebKey, format: 'jwk' }));
-  }
-  jwksCache = next;
-  jwksFetchedAt = Date.now();
+  // Unknown kid - trigger immediate refresh
+  await refreshJwks();
   return jwksCache.get(kid) ?? null;
 };
 
@@ -182,4 +225,9 @@ export function logoutUrl(appUrl: string): string {
 export function safeNextPath(next: string | null | undefined): string {
   if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return '/app';
   return next;
+}
+
+// Start proactive JWKS refresh on module load (once per process)
+if (typeof window === 'undefined') {
+  startJwksRefresh();
 }
