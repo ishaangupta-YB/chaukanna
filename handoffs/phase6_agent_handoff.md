@@ -1,105 +1,141 @@
 # Agent Handoff, Phase 6 (Authorization, safety, dashboard)
 
-Branch `feat/phase-6-authz-safety-dashboard`. The **policy store is deployed and wired into
-Amplify**; the **web code that calls it is not committed and not deployed**, so the live URL still
-serves Phase 5 behaviour. Phase 7 task 2 (the demo seed) is done and has run against the real
-table; the rest of Phase 7 is open.
+**Phase 6 is complete and its gate passes on the deployed system.** Everything below was
+demonstrated against `https://main.d22ofb6t13cyj2.amplifyapp.com` and the live policy store, not
+only in tests.
 
-## Read these first
-- `apps/web/src/lib/authz.ts` — the `requireAuthz` helper and the two request-shape traps below.
-  This file is owned by another agent in flight; do not edit it without asking.
-- `apps/web/src/lib/dashboard.ts` — pure, band-only, no AWS client. The module boundary is what
-  makes "a guardian cannot read a quote" a property rather than a UI decision.
-- `apps/web/src/lib/audit.ts` — the same idea for the provenance table (phase 6 task 9).
-- `apps/web/scripts/seed-demo.ts` — the demo seed. Its header explains why the score row is the
-  one write that does not go through `lib/db/`.
-- `infra/lib/chaukanna-stack.ts` — the policy store, schema and Cedar policies.
+> This file replaces an earlier version that said the Phase 6 web code was uncommitted and that no
+> real `IsAuthorized` call had been made from the deployed app. Both were true when it was
+> written and neither is true now.
 
-## The shape of it
+## The gate, as it was proven
 
-```
-guardian page / route handler
-      ↓  resolveMember / getGuardianHousehold      (household check, unchanged)
-      ↓  requireAuthz(principal, action, resource)
-   Verified Permissions  ap-south-1  RdXE3H1ctJEqwZxTF4jNn6
-      ↓  ALLOW → carry on      anything else, including an error → 403 (default deny)
+Run against the live URL with a demo session, in this order:
 
-dashboard reads:  listDrills + listScores → learnerProgress()  → points, steps, overall, weakest
-audit reads:      listDrills + listScores + getLatestConsent   → buildAuditRows()
-learner control:  POST /api/members/<id>/sharing → Member.transcriptSharing (off by default)
-```
+| Step | Result |
+|---|---|
+| Schedule a drill for an **active** learner | policy ALLOWs; refused later by `weekly_cap` (409), not by policy |
+| Kill switch: `POST /api/members/<id>/pause-all` | `{"status":"paused","cancelled":1}` |
+| Member row | `status: paused` |
+| Pending drill row | `cancelled` |
+| EventBridge Scheduler | zero schedules remaining |
+| Schedule a drill for the **paused** learner | **403 `authz_denied`** — the Cedar `forbid`, from the deployed store |
+| "Ring now" for the same learner | **403 `authz_denied`** — same policy, other path |
 
-## Decisions worth knowing
+That is all four kill-switch effects and the policy refusing a new drill, in one sequence, from
+the deployed system. It is the 60 seconds of screen recording the phase asks for.
 
-- **The Cedar schema is wrapped in its namespace.** `CreatePolicyStore` takes
-  `{"Chaukanna": {entityTypes, actions}}`, not `{entityTypes, actions}`. The unwrapped version is
-  rejected with ``unknown field `Household`, expected one of commonTypes, entityTypes, actions,
-  annotations``, which reads like a broken entity definition and is really the service reporting
-  that it took `Household` for a namespace. Entity types on the wire are then namespace-qualified
-  everywhere: `Chaukanna::Member`, never `Member`.
-- **`IsAuthorized` takes bare `EntityIdentifier`s.** `principal` and `resource` are type and id
-  only; attributes go in `entities.entityList` as their own entries keyed by the same identifier.
-  Put them on the principal or the resource and the API accepts the call, silently drops them, and
-  every `when`-guarded policy evaluates against an attribute-less entity and denies. It never
-  errors. If nothing is ever permitted and the log shows a clean DENY, suspect the request shape
-  before the policy text.
-- **Verified Permissions is available in `ap-south-1`.** The phase's cross-region pitfall did not
-  bite; the store lives with the rest of the data plane.
-- **Nothing band-derived ever carries a quote.** `dashboard.ts` and `audit.ts` receive rows and
-  return bands, dates, flag ids and counts. `turningPoint`, `debriefText` and every `evidence`
-  string stay on the learner's screen (PRD F7 AC2).
-- **The demo seed writes the score row itself.** `lib/db/scores.ts` is read-only on purpose, so
-  the seed uses the same client, key builder and `Score` schema from the script rather than adding
-  a write path to the app. Everything else — household, member, consent, window, drills — goes
-  through the real helpers.
-- **`tsx` is a new dev dependency of `apps/web`, one line, for the seed only.** Node 26 strips TS
-  types but resolves relative imports as ESM, so the extensionless `./client` imports used
-  throughout `lib/` cannot be run by `node` directly. The alternative was rewriting import
-  specifiers across the app to suit a script.
+Eleven allow/deny cases were also run directly against policy store `RdXE3H1ctJEqwZxTF4jNn6`
+using the app's own `lib/authz.ts` — guardian band, guardian transcript with sharing off and on,
+learner's own transcript, learner `TakeDrill`, stranger denied on all three, paused schedule
+denied, plus the batched `ViewBand` path keeping own-household drills and dropping a foreign one.
+All green.
 
-## Verified
-- `apps/web`: **242 tests, 20 files, green.** `npm run typecheck` and `npm run lint` clean.
-- The Verified Permissions policy store exists in the account:
-  `RdXE3H1ctJEqwZxTF4jNn6`, created 2026-09-20, and `POLICY_STORE_ID` is set on the Amplify
-  `main` branch alongside `TABLE_NAME`, `AGENT_RUNTIME_ARN`, `RING_LAMBDA_ARN` and the rest.
-- **The demo seed ran twice against the real `chaukanna` table** (`AWS_PROFILE=chaukanna`,
-  `ap-south-1`). The second run reported every row already present, and the read-back through
-  `lib/dashboard.ts` printed `at_risk -> safe`, overall `better`, weakest
-  `Took the caller for a real official (x2)`, consent present. Household `50f31ba83580986b7341`,
-  learner `e35d576e20adef50dfdb`, ownerSub `demo-seed-guardian`.
+## What changed to get there
 
-## Not verified, and it needs a deploy
-- **Every Phase 6 file is uncommitted.** The audit page, the dashboard components, the sharing
-  toggle, `authz.ts`, `audit.ts`, `dashboard.ts` and `kill-switch.test.ts` are working-tree
-  changes on this branch. Amplify builds only the connected branch, so none of it is on the live
-  URL until this merges into `main`.
-- **No real `IsAuthorized` call has been made from the deployed app.** The policy store is
-  deployed and the client code is written; the allow/deny pair the Phase 6 gate asks for on camera
-  has not been demonstrated end to end.
-- **The kill switch's four effects have not been watched together against the account** — pause,
-  schedule deletion, pending drills cancelled, policy refusing a new one.
-- **The accessibility pass (task 8) has not been done on a phone at arm's length.**
-- `DEMO_MODE` is **not** set on the Amplify branch, so the judge demo button is off on the live
-  URL. Setting it is a console change, not a deploy.
+The six Cedar policies and the schema were already deployed and correct. What was missing was
+that the running app never asked about three of the four actions.
 
-## Deploying this, in order
+- **`ScheduleDrill` was enforced by a branch, not a policy.** `guardNewDrill` refused a paused
+  member with an `if`. Right answer, wrong mechanism: a branch cannot be shown denying, cannot
+  change without a deploy, and drifts the first time somebody reorders the guards. The route now
+  calls `requireAuthz` **before parsing the body**, carrying the member's live `status` so the
+  `forbid` can fire.
+- **`TakeDrill` was dead.** `POST /api/drills/[id]/session` now asks it.
+- **`ViewBand` was never asked on the two screens that read drills.** `/app` and `/app/audit` now
+  authorize every drill they render, through `lib/guardian-view.ts`.
+
+## The trap that will bite you again
+
+**A batch API is a different IAM action from its singular form and is never implied by it.**
+
+The compute role had `dynamodb:GetItem` and `verifiedpermissions:IsAuthorized`. It did not have
+`dynamodb:BatchGetItem` (which `listScores` calls) or `verifiedpermissions:BatchIsAuthorized`
+(which the dashboard's authorization calls). Consequences:
+
+- `/app` and `/app/audit` returned **500 for any household that had ever run a drill**. This
+  predates Phase 6 and was never seen because an empty demo household exercises neither call, so
+  the dashboard looked perfect right up until it had data.
+- It is invisible locally and in CI, because both run as an admin identity that may call both.
+
+Verify with one action per call — the API refuses two VP actions in one request:
+
 ```bash
-# 1. merge this branch into main; Amplify builds it
-# 2. seed the demo household into the account the demo will sign in as
-cd apps/web
-AWS_PROFILE=chaukanna npm run seed:demo -- --owner-sub=<the Cognito sub you will demo with>
-# 3. sign in at https://main.d22ofb6t13cyj2.amplifyapp.com and confirm the trend renders
+aws iam simulate-principal-policy \
+  --policy-source-arn arn:aws:iam::<acct>:role/chaukanna-amplify-compute-role \
+  --action-names dynamodb:BatchGetItem \
+  --resource-arns arn:aws:dynamodb:ap-south-1:<acct>:table/chaukanna \
+  --query 'EvaluationResults[0].EvalDecision' --output text     # allowed | implicitDeny
 ```
-Do not run `--wipe` against anything but the demo household; it deletes by derived key only, but
-`--owner-sub` decides which household that is.
 
-There is nothing new to `cdk deploy` for Phase 6 if the policy store is the only infra change and
-it is already in the account. If `infra/lib/chaukanna-stack.ts` has drifted since, read the diff
-before deploying — and the Phase 5 hazard still stands: **`cdk deploy ChaukannaVoiceStack`
-without `AGENT_IMAGE` set will destroy the live AgentCore runtime.**
+Both call sites now fall back to the singular form when the batch action is denied, so the
+screens work under either configuration. **The CDK grant is fixed but not deployed** — see below.
+
+## The one thing still owed
+
+`infra/lib/chaukanna-stack.ts` now grants `dynamodb:BatchGetItem` and
+`verifiedpermissions:BatchIsAuthorized` on the compute role. That change is **committed and not
+deployed**. The diff is those two actions on one IAM policy and nothing else:
+
+```bash
+cd infra
+AWS_PROFILE=chaukanna AWS_REGION=ap-south-1 npx cdk diff ChaukannaStack     # read it first
+AWS_PROFILE=chaukanna AWS_REGION=ap-south-1 npx cdk deploy ChaukannaStack
+```
+
+It is an optimisation, not a fix: without it the fallbacks run and the screens work, one request
+per drill instead of one per screen. With it, one call.
+
+**Always pass `AWS_PROFILE` and `AWS_REGION` to cdk.** Without them the CLI resolves the region
+from the default profile, synthesises into `us-east-1`, finds nothing there and reports the
+entire stack as new. A diff that says `[+]` for every resource is a wrong target, not a big
+change — and a deploy from it creates a duplicate stack in the wrong region.
+
+**The Phase 5 hazard still stands:** `cdk deploy ChaukannaVoiceStack` without `AGENT_IMAGE` set
+destroys the live AgentCore runtime. Deploy `ChaukannaStack` by name, never `--all`.
+
+## Where the code lives
+
+```
+lib/authz.ts          requireAuthz (one decision) + authorizedQueries (a list, batched,
+                      falling back to singles when BatchIsAuthorized is denied)
+lib/guardian-view.ts  authorizedDrills: which drills a guardian may see the outcome of.
+                      Returns `available: false` when the check could not run, which the
+                      screens render as a notice — never as "no practice calls yet".
+lib/dashboard.ts      pure, band-only, no AWS client
+lib/audit.ts          the same idea for the provenance table
+lib/db/scores.ts      read-only; BatchGetItem with a per-drill fallback
+```
+
+`dashboard.ts` and `audit.ts` receive rows and return bands, dates, flag ids and counts. No quote
+can cross out of them, so "a guardian cannot read a transcript" is a property of the module
+boundary rather than a UI decision (PRD F7 AC2).
+
+## Accessibility (task 8)
+
+Done, and held by `src/components/learner/accessibility.test.ts` rather than by having looked
+once. Every learner string is ≥20px and every learner control ≥48px; eighteen strings were at
+18px, almost all error messages, copied in from guardian components where 18px is fine. The test
+also allowlists the three screens permitted a timer, so a new countdown on a learner screen fails
+the suite.
+
+## Retention (task 6), for the camera
+
+`s3://chaukanna-artifacts-<ACCOUNT_ID>`, all rules Enabled:
+`drill-audio-7-days`, `drill-transcript-30-days`, `drill-redacted-30-days`, `debrief-90-days`,
+`consent-365-days`, `abort-incomplete-uploads`.
+
+## Test data left behind
+
+One demo household, `HH#12e25b5c08532f1277ec` / member `0f73001abb2ed523affc`, created by the
+live gate run above. Its `ownerSub` begins with `demo-`, it is paused with one cancelled drill,
+and demo sessions carry a 2 hour TTL. Harmless; delete it if you want a clean audit log on camera.
 
 ## Still open, inherited
-- CI cannot deploy: the `chaukanna-github-deploy` role and the OIDC provider still do not exist.
-  Both workflows skip cleanly rather than failing red.
+
+- CI: the OIDC provider and the `chaukanna-github-deploy` role **now exist** in the account with
+  a trust policy scoped to `repo:ishaangupta-YB/chaukanna:*`. What was not confirmed from here is
+  whether the `AWS_ROLE_TO_ASSUME` repository secret is set; without it both workflows skip
+  cleanly rather than failing.
 - First caller audio at ~4.2 s against the PRD's 3 s (F4 AC2), untouched since Phase 3.
 - The spoken break-character line is still deliberately absent; the drill ends on time, silently.
