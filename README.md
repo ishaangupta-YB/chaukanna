@@ -33,11 +33,16 @@ chaukanna/
     scoring/             # Step Functions task Lambdas (Python)
     video/               # VideoProvider interface (Phase 8 deferred)
   infra/                 # AWS CDK v2 TypeScript infrastructure stack
-  docs/                  # Architecture, PRD, phases, prompts, guides
-    phases/              # Phase-specific execution plans and gates
   fixtures/              # Recorded transcripts and synthetic test utterances
+  handoffs/              # What was true at the end of each phase, including what was not verified
   .github/workflows/     # CI/CD deployment pipelines (OIDC)
 ```
+
+The team's internal planning directory (`docs/`: the PRD, the phase plans, the architecture log
+and the AWS runbooks) is deliberately not published. Everything needed to understand, run and
+redeploy the system is in this file, in [USER_GUIDE.md](USER_GUIDE.md) and in
+[`handoffs/`](handoffs/), which is the honest record of each phase — including what was left
+unverified.
 
 ---
 
@@ -169,8 +174,10 @@ docker build --platform linux/arm64 -t chaukanna-drill .
 Deploying it is in `handoffs/phase3_agent_handoff.md`. The image URI carries the account id, so it
 is passed as `AGENT_IMAGE=...` and never written into `cdk.json`.
 
-Prompts live in `docs/AGENT_PROMPTS.md` and are copied verbatim into
-`apps/agent/chaukanna_agent/prompts/` by `uv run python scripts/sync_prompts.py`. A test fails if they drift.
+Every prompt that ships is in `apps/agent/chaukanna_agent/prompts/` and
+`services/scoring/scoring_service/prompts/`, versioned in the filename. They are copied there
+verbatim from the team's prompt register by `uv run python scripts/sync_prompts.py`, and a test
+fails if the two ever drift.
 
 ### CI deploys (GitHub OIDC)
 
@@ -187,8 +194,9 @@ scripts/setup-github-oidc.sh <org>/<repo> --profile chaukanna
 gh secret set AWS_ROLE_TO_ASSUME --repo <org>/<repo> --body '<the printed role ARN>'
 ```
 
-The trust policy is scoped to this one repository (`repo:<org>/<repo>:*`); see
-`docs/AWS_SETUP.md` section 8.
+The trust policy is scoped to this one repository (`repo:<org>/<repo>:*`). The script prints the
+exact role, policy and trust document it is about to create and waits for confirmation, so there
+is nothing to take on trust from this file.
 
 ---
 

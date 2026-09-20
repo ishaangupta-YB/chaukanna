@@ -144,11 +144,16 @@ export function buildMemberResource(memberId: string, householdId: string, statu
 }
 
 /*
- * Batch authorization, for the screens that read a list.
+ * Authorization for the screens that read a list.
  *
- * The dashboard holds a guardian's whole history at once, and one `IsAuthorized` per drill would
- * be a round trip per row. `BatchIsAuthorized` asks the same questions against the same policies
- * in a single call, and the answers are still Cedar's, one per drill.
+ * The dashboard and the audit log hold a guardian's whole history at once. `BatchIsAuthorized`
+ * asks Cedar about every drill in a single round trip, which is the right API for the job — but
+ * it is a *separate* IAM action from `IsAuthorized`, and a role granted only the latter gets
+ * AccessDenied rather than a decision. Since default deny turns that into a blank dashboard, the
+ * batch path falls back to asking one question at a time, in parallel.
+ *
+ * Both paths put the same questions to the same policies and honour the same answers. Only the
+ * transport differs, so the fallback costs latency and API calls, never correctness.
  */
 
 /** Verified Permissions caps a batch at 30 requests. */
@@ -168,14 +173,37 @@ function toEntityItem(entity: VPPrincipal | VPResource): EntityItem {
   return { identifier: toEntity(entity), attributes: toAttributes(entity.attributes) };
 }
 
+/** Whether a failure is "this role may not call that API" rather than "the service is unwell". */
+function isAccessDenied(error: unknown): boolean {
+  const name = (error as { name?: string } | null)?.name ?? '';
+  return name === 'AccessDeniedException' || name === 'AccessDenied';
+}
+
+/** One `IsAuthorized` per query, in parallel, so the wall time stays one round trip. */
+async function askOneByOne(principal: VPPrincipal, queries: VPQuery[]): Promise<Set<string>> {
+  const decisions = await Promise.all(
+    queries.map(async ({ action, resource }) => {
+      try {
+        await requireAuthz(principal, action, resource);
+        return queryKey(action, resource.id);
+      } catch {
+        // Both a DENY and an unreachable service land here, and both mean the same thing to a
+        // list: this row is not released.
+        return null;
+      }
+    }),
+  );
+  return new Set(decisions.filter((key): key is string => key !== null));
+}
+
 /**
  * The subset of `queries` this principal is allowed, as `action|resourceId` keys.
  *
  * Default deny is preserved in the strongest form available to a list: a resource is in the set
  * only on an explicit ALLOW, so an evaluation error, a missing result or a short response leaves
- * it out. A failure of the call itself throws, exactly as `requireAuthz` does, because a caller
- * that quietly rendered an empty list would be reporting "no practice calls" when what happened
- * is "we could not ask".
+ * it out. A failure of the batch call other than a missing permission throws, exactly as
+ * `requireAuthz` does, because a caller that quietly rendered an empty list would be reporting
+ * "no practice calls" when what happened is "we could not ask".
  */
 export async function authorizedQueries(principal: VPPrincipal, queries: VPQuery[]): Promise<Set<string>> {
   const allowed = new Set<string>();
@@ -209,6 +237,13 @@ export async function authorizedQueries(principal: VPPrincipal, queries: VPQuery
         )
       ).results;
     } catch (error) {
+      if (isAccessDenied(error)) {
+        // The role has `IsAuthorized` but not `BatchIsAuthorized`. Ask the same questions the
+        // long way rather than denying a guardian their own dashboard over an IAM action.
+        log.info('authz.batch_forbidden_falling_back', { count: chunk.length, principalId: principal.id });
+        for (const key of await askOneByOne(principal, chunk)) allowed.add(key);
+        continue;
+      }
       log.error('authz.batch_unavailable', { count: chunk.length, principalId: principal.id, ...errorFields(error) });
       throw forbidden('authz_unavailable');
     }

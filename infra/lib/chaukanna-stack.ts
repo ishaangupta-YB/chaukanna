@@ -437,10 +437,13 @@ export class ChaukannaStack extends cdk.Stack {
       }),
     );
 
-    // Verified Permissions: allow IsAuthorized calls from route handlers
+    // Verified Permissions: allow authorization calls from route handlers and server components.
+    // `BatchIsAuthorized` is not implied by `IsAuthorized` — the guardian dashboard and the audit
+    // log ask about every drill they render in one batched call, and without this action they get
+    // AccessDenied at request time, which default deny correctly turns into an empty screen.
     this.computeRole.addToPolicy(
       new iam.PolicyStatement({
-        actions: ['verifiedpermissions:IsAuthorized'],
+        actions: ['verifiedpermissions:IsAuthorized', 'verifiedpermissions:BatchIsAuthorized'],
         resources: [this.policyStore.attrArn],
       }),
     );

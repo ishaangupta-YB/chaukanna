@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Project: **Chaukanna**. Consented practice scam calls that train Indian families against digital arrest fraud.
-Read `docs/PRD.md` before writing code. Read `docs/PHASES.md` to find out which phase is active. Read `docs/AGENT_PROMPTS.md` before touching a prompt.
+Read `docs/PRD.md` before writing code. Read `docs/PHASES.md` to find out which phase is active. Read `docs/AGENT_PROMPTS.md` before touching a prompt. (`docs/` is the team's working directory and is deliberately not committed, so it exists in a working copy but not in a fresh clone of the public repository.)
 Hackathon build, team of 4, public repository.
 
 ## Prime directives
@@ -48,7 +48,7 @@ chaukanna/
     scoring/             Step Functions task Lambdas (Python)
     video/               VideoProvider interface only, no implementation in the MVP
   infra/                 CDK app
-  docs/                  PRD, PHASES, ARCHITECTURE, AGENT_PROMPTS, guides, phases/
+  docs/                  PRD, PHASES, ARCHITECTURE, AGENT_PROMPTS, guides, phases/  (local only, gitignored)
   fixtures/              recorded transcripts and synthetic utterances
   .github/workflows/     deploy-infra.yml, deploy-agent.yml
 ```

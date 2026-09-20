@@ -39,6 +39,12 @@ interface BatchRequest {
   action: { actionType: string; actionId: string };
   resource: { entityType: string; entityId: string };
 }
+interface SingleInput {
+  policyStoreId: string;
+  principal: { entityType: string; entityId: string };
+  action: { actionType: string; actionId: string };
+  resource: { entityType: string; entityId: string };
+}
 interface BatchInput {
   policyStoreId: string;
   entities: { entityList: { identifier: { entityType: string; entityId: string } }[] };
@@ -144,7 +150,32 @@ describe('authorizedDrills', () => {
     expect(result).toEqual({ drills: [], available: true });
   });
 
-  it('reports unavailable, not empty, when the call itself fails', async () => {
+  it('falls back to one question at a time when the role may not call BatchIsAuthorized', async () => {
+    // The compute role is granted `IsAuthorized`; `BatchIsAuthorized` is a separate action and
+    // is not implied by it. A guardian must not lose their own dashboard over that.
+    const denied = Object.assign(new Error('not authorized'), { name: 'AccessDeniedException' });
+    sdk.send.mockReset();
+    sdk.send.mockImplementation(async (command: { input: BatchInput | SingleInput }) => {
+      if ('requests' in command.input) throw denied;
+      // The single-request shape, answered by the same rule the batch fake uses.
+      const single = command.input as SingleInput;
+      return { decision: single.resource.entityId.startsWith('same') ? 'ALLOW' : 'DENY' };
+    });
+
+    const result = await authorizedDrills(GUARDIAN_SUB, HOUSEHOLD, member(), [
+      drill('same-1'),
+      drill('other-1', OTHER_HOUSEHOLD),
+      drill('same-2'),
+    ]);
+
+    // Identical answers to the batch path: the fallback changes the transport, not the decision.
+    expect(result.available).toBe(true);
+    expect(result.drills.map((d) => d.drillId)).toEqual(['same-1', 'same-2']);
+    // One batch attempt, then one IsAuthorized per drill.
+    expect(sdk.send).toHaveBeenCalledTimes(4);
+  });
+
+  it('still reports unavailable when the fallback is not applicable', async () => {
     sdk.send.mockRejectedValueOnce(new Error('ThrottlingException'));
     const result = await authorizedDrills(GUARDIAN_SUB, HOUSEHOLD, member(), [drill('same-1')]);
     // Default deny: no drills. But `available: false` is what stops the screen reporting this

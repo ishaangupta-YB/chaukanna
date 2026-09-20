@@ -261,8 +261,8 @@ in `fixtures/judge/` are replayed offline by the test suite.
 
 ## 6. Deploying your own
 
-Full detail is in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) and [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md).
-The short version:
+Every command you need is below; the per-phase deployment notes, including the hazards, are in
+[`handoffs/`](handoffs/). The short version:
 
 ```bash
 # 1. Infrastructure first: table, bucket, user pool, secret, scheduler role, ring Lambda,
@@ -330,10 +330,12 @@ build), and paste the CDK outputs as environment variables.
 
 | Document | What is in it |
 |---|---|
-| [`docs/PRD.md`](docs/PRD.md) | The product, the rules, the scoring rubric, the data model |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Every architectural decision and the option it rejected |
-| [`docs/AGENT_PROMPTS.md`](docs/AGENT_PROMPTS.md) | Every prompt, versioned |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) / [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md) | How it gets to AWS |
-| [`docs/phases/`](docs/phases/) | The build order and each phase's gate |
+| [`README.md`](README.md) | The stack, the architecture picture, how to run each package, credits |
 | [`handoffs/`](handoffs/) | What was true at the end of each phase, including what was *not* verified |
 | [`LEARNINGS.md`](LEARNINGS.md) | What broke, and what it taught |
+| [`apps/agent/chaukanna_agent/prompts/`](apps/agent/chaukanna_agent/prompts/) | Every drill prompt that ships, versioned in the filename |
+| [`services/scoring/scoring_service/prompts/`](services/scoring/scoring_service/prompts/) | The judge and debrief prompts |
+| [`infra/lib/chaukanna-stack.ts`](infra/lib/chaukanna-stack.ts) | Every AWS resource, the Cedar schema and all six policies |
+| [`fixtures/`](fixtures/) | The transcripts and recorded judge outputs the suites replay |
+
+The team's internal planning directory (`docs/`) is not published.
