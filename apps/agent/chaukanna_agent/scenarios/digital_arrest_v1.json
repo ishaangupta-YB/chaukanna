@@ -1,0 +1,7 @@
+{
+  "id": "digital_arrest_v1",
+  "version": 1,
+  "title": "Digital arrest via a courier hook",
+  "fake_account_label": "Suraksha Satyapan Khata",
+  "voices": { "hi-IN": "arjun", "en-IN": "arjun" }
+}

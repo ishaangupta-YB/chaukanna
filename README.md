@@ -40,12 +40,23 @@ chaukanna/
 - **Web & API:** Next.js 15 App Router, React 19, TypeScript, Tailwind CSS, hosted on AWS Amplify.
 - **Infrastructure:** AWS CDK v2 (TypeScript) deploying DynamoDB single-table, S3 artifacts bucket, and Cognito User Pool.
 - **Voice Agent:** Python 3.12+, Strands Agents SDK `BidiAgent`, Amazon Nova 2 Sonic via Amazon Bedrock AgentCore Runtime (`ap-northeast-1`).
-- **Data & Auth:** DynamoDB single-table (`ap-south-1`), S3 encrypted storage, Cognito User Pool for Guardians, single-use signed tokens for Learners.
+- **Data & Auth:** DynamoDB single-table (`ap-south-1`), S3 encrypted storage, Cognito User Pool for Guardians federated to Google (no passwords anywhere), single-use signed tokens for Learners.
 - **CI/CD:** GitHub Actions with AWS IAM OIDC roles.
 
 ---
 
 ## Quick Start (Local Development)
+
+### 0. Once per clone
+
+```bash
+git config core.hooksPath .githooks   # refuses commits that would leak secrets or private files
+cp .env.example apps/web/.env.local   # then fill the blanks from infra/cdk-outputs.json
+```
+
+`scripts/check-staged.sh` also runs on its own (`scripts/check-staged.sh` for what is staged,
+`scripts/check-staged.sh <ref>` for a commit). Real values belong in `.env.local`, never in a
+committed template: this repository is public.
 
 ### 1. Web Application
 
@@ -73,17 +84,37 @@ npx cdk diff          # Compare local with deployed stack
 
 ```bash
 cd apps/agent
-uv sync
-uv run pytest         # Replay fixtures and tests
+uv sync --all-groups  # the local group adds sounddevice for the terminal drill
+uv run pytest         # tripwire, session limits, 10 fixture replays
+export AWS_PROFILE=chaukanna VOICE_REGION=ap-northeast-1
+uv run python scripts/smoke_sonic.py                 # prove Nova 2 Sonic answers in the region
+uv run python -m chaukanna_agent.local --language hi-IN   # talk to the drill, headphones on
+uv run python scripts/rehearse.py --script digit_sharer   # typed learner, real model, no mic
 ```
+
+The same drill also runs as a server for the browser (Phase 3). AgentCore Runtime expects a
+WebSocket at `/ws` and a health check at `/ping` on port 8080, in an ARM64 container:
+
+```bash
+cd apps/agent
+DATA_REGION=ap-south-1 TABLE_NAME=chaukanna ARTIFACTS_BUCKET=<bucket> VOICE_REGION=ap-northeast-1 \
+  uv run python -m chaukanna_agent.server        # the same call, driven by a socket
+docker build --platform linux/arm64 -t chaukanna-drill .
+```
+
+Deploying it is in `handoffs/phase3_agent_handoff.md`. The image URI carries the account id, so it
+is passed as `AGENT_IMAGE=...` and never written into `cdk.json`.
+
+Prompts live in `docs/AGENT_PROMPTS.md` and are copied verbatim into
+`apps/agent/chaukanna_agent/prompts/` by `uv run python scripts/sync_prompts.py`. A test fails if they drift.
 
 ---
 
 ## Phase Gates
 
 - [x] **Phase 0: Foundations** — Monorepo scaffolded, CDK stack synthesized, Next.js app with `/api/health`, CI/CD workflows ready.
-- [ ] **Phase 1: Domain and Consent** — Guardian invite flow & learner consent deployed.
-- [ ] **Phase 2: The Agent, Locally** — Hindi drill runs end-to-end in terminal with tripwire.
+- [ ] **Phase 1: Domain and Consent** — Guardian invite flow & learner consent. Built and verified locally against the deployed stack; gate waits on the Amplify deploy.
+- [ ] **Phase 2: The Agent, Locally** — Hindi drill runs end-to-end in terminal with tripwire. Built, fixture suite green, real model rehearsed; gate waits on a recorded voice run. The spoken break character line is deliberately deferred: the drill still ends on time, silently.
 - [ ] **Phase 3: The Agent, in the Browser** — Drill runs from phone browser against AgentCore.
 - [ ] **Phase 4: Drill Lifecycle** — Scheduled drill rings inside the window.
 - [ ] **Phase 5: Scoring and Debrief** — Finished drill produces a band and spoken debrief.
@@ -96,6 +127,13 @@ uv run pytest         # Replay fixtures and tests
 
 In compliance with hackathon regulations, the following AI coding assistants were used to build this repository:
 - **Google Antigravity AI**
+- **Claude Code** (Anthropic), Phases 1, 2 and 3
+
+No third party samples or templates are copied into this repository. Libraries are used as
+dependencies under their own licences. The AgentCore Runtime WebSocket contract (port 8080, `/ws`,
+`/ping`) is implemented against the published
+[AWS documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-get-started-websocket.html)
+using the Apache 2.0 licensed `bedrock-agentcore` SDK as a dependency; no sample code is copied.
 
 ---
 

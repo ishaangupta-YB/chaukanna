@@ -1,0 +1,27 @@
+{
+  "name": "silence",
+  "language": "hi-IN",
+  "scenario": "digital_arrest_v1",
+  "synthetic": true,
+  "maxSeconds": 2,
+  "description": "The learner answers and says nothing. The caller tries again; the session cap ends the call.",
+  "steps": [
+    {
+      "caller": "Namaste, main courier department se baat kar raha hoon. Aapke naam se ek parcel hold par hai. Aap apna naam confirm kar sakte hain?",
+      "tools": []
+    },
+    {
+      "pause": 0.3
+    },
+    {
+      "caller": "Hello? Aap line par hain?",
+      "tools": []
+    }
+  ],
+  "expect": {
+    "endReason": "timeout",
+    "finalStage": "S0",
+    "breakCharacter": true,
+    "redFlags": []
+  }
+}

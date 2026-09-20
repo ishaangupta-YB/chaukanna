@@ -1,0 +1,41 @@
+{
+  "name": "safe_word_s1",
+  "language": "hi-IN",
+  "scenario": "digital_arrest_v1",
+  "synthetic": true,
+  "maxSeconds": 30,
+  "description": "The learner says the safe word at S1.",
+  "steps": [
+    {
+      "caller": "Namaste, main courier department se baat kar raha hoon. Aapke naam se ek parcel hold par hai. Aap apna naam confirm kar sakte hain?",
+      "tools": []
+    },
+    {
+      "learner": "haan ji"
+    },
+    {
+      "caller": "Yeh matter cyber cell ke paas hai. Main aapki call transfer kar raha hoon, line par rahiye.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S1"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "roko"
+    },
+    {
+      "caller": "Aapke naam se ek case register hua hai. Aapko bas sahyog karna hai, ghabraiye mat.",
+      "tools": []
+    }
+  ],
+  "expect": {
+    "endReason": "safe_word",
+    "finalStage": "S1",
+    "breakCharacter": true,
+    "redFlags": []
+  }
+}

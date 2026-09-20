@@ -1,0 +1,72 @@
+{
+  "name": "distressed",
+  "language": "hi-IN",
+  "scenario": "digital_arrest_v1",
+  "synthetic": true,
+  "maxSeconds": 30,
+  "description": "The learner becomes frightened at S2. Distress ends the drill from code.",
+  "steps": [
+    {
+      "caller": "Namaste, main courier department se baat kar raha hoon. Aapke naam se ek parcel hold par hai. Aap apna naam confirm kar sakte hain?",
+      "tools": []
+    },
+    {
+      "learner": "haan ji, main Kamla bol rahi hoon"
+    },
+    {
+      "caller": "Yeh matter cyber cell ke paas hai. Main aapki call transfer kar raha hoon, line par rahiye.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S1"
+          }
+        },
+        {
+          "name": "record_red_flag",
+          "input": {
+            "flag_id": "stayed_on_call",
+            "quote": "haan ji"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "theek hai"
+    },
+    {
+      "caller": "Aapke naam se ek case register hua hai. Aapko bas sahyog karna hai, ghabraiye mat.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S2"
+          }
+        },
+        {
+          "name": "record_red_flag",
+          "input": {
+            "flag_id": "accepted_authority",
+            "quote": "theek hai"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "mujhe dar lag raha hai, mere bete ko bulao"
+    },
+    {
+      "caller": "Ghabraiye mat, bas sahyog kijiye.",
+      "tools": []
+    }
+  ],
+  "expect": {
+    "endReason": "distress",
+    "finalStage": "S2",
+    "breakCharacter": true,
+    "redFlags": [
+      "stayed_on_call",
+      "accepted_authority"
+    ]
+  }
+}

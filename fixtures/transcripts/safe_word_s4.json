@@ -1,0 +1,100 @@
+{
+  "name": "safe_word_s4",
+  "language": "hi-IN",
+  "scenario": "digital_arrest_v1",
+  "synthetic": true,
+  "maxSeconds": 30,
+  "description": "The learner says the safe word in Devanagari at S4.",
+  "steps": [
+    {
+      "caller": "Namaste, main courier department se baat kar raha hoon. Aapke naam se ek parcel hold par hai. Aap apna naam confirm kar sakte hain?",
+      "tools": []
+    },
+    {
+      "learner": "haan ji, main Kamla bol rahi hoon"
+    },
+    {
+      "caller": "Yeh matter cyber cell ke paas hai. Main aapki call transfer kar raha hoon, line par rahiye.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S1"
+          }
+        },
+        {
+          "name": "record_red_flag",
+          "input": {
+            "flag_id": "stayed_on_call",
+            "quote": "haan ji"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "theek hai"
+    },
+    {
+      "caller": "Aapke naam se ek case register hua hai. Aapko bas sahyog karna hai, ghabraiye mat.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S2"
+          }
+        },
+        {
+          "name": "record_red_flag",
+          "input": {
+            "flag_id": "accepted_authority",
+            "quote": "theek hai"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "ji"
+    },
+    {
+      "caller": "Yeh confidential matter hai. Call ke dauran kisi se discuss mat kijiye.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S3"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "theek hai"
+    },
+    {
+      "caller": "File complete karne ke liye mujhe aapka ek identification number confirm karna hoga.",
+      "tools": [
+        {
+          "name": "advance_stage",
+          "input": {
+            "stage": "S4"
+          }
+        }
+      ]
+    },
+    {
+      "learner": "रोको"
+    },
+    {
+      "caller": "Verification ke liye aapke funds ko Suraksha Satyapan Khata mein transfer karna hoga.",
+      "tools": []
+    }
+  ],
+  "expect": {
+    "endReason": "safe_word",
+    "finalStage": "S4",
+    "breakCharacter": true,
+    "redFlags": [
+      "stayed_on_call",
+      "accepted_authority"
+    ]
+  }
+}
