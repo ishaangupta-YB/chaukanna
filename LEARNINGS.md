@@ -69,7 +69,9 @@ cached token and `GIT_ASKPASS` is only consulted when the helper has nothing to 
 ---
 
 ## Phase 4: Drill Lifecycle
-<!-- To be populated upon completion of Phase 4 -->
+
+### Member B (Infrastructure & Lifecycle)
+*The rule that shaped this phase is that a schedule firing after a cancellation is normal, not an error, so nothing may be a blind write: every transition is a conditional update naming the state it expects to find, and the ring Lambda re-reads consent, status and window at the moment it fires rather than trusting the decision made hours earlier when the drill was created. That ordering matters in the cancellation path too — the row is marked cancelled first and the EventBridge schedule deleted second, because a process that dies between the two must leave a cancelled drill with a live schedule (harmless, the Lambda re-checks) rather than a live drill with no schedule to stop it. Two things only a deploy would have caught. The window check had to be dropped from the scheduled path: the whole point is scheduling at 10:00 a call that rings at 14:20, and the original guard refused every drill created outside the learner's hours, which would have made the feature usable only during the hours it was meant to arrange. And `lambda.Code.fromAsset` on a source tree installs nothing — the Python 3.12 runtime ships boto3 and botocore and nothing else, so the pydantic model the house style asked for on the event boundary would have imported cleanly in 42 green tests and then failed at cold start in production; twelve lines of explicit validation and a comment explaining why beat a dependency that only breaks where nobody is watching. The email went to the guardian rather than the learner in the end, because the learner deliberately has no account and no address anywhere in this product, and inventing one to send a nudge would have traded a real privacy property for a convenience. A missed drill is evaluated lazily on the next read: a second scheduler whose only job is to tidy a row nobody is looking at is machinery for its own sake at one drill per learner per week.*
 
 ---
 
