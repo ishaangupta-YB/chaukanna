@@ -1,6 +1,6 @@
-import { createHmac, generateKeyPairSync, sign as cryptoSign, type KeyObject } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
-import { safeNextPath, verifyIdToken, type VerifyOptions } from './auth';
+import { createHash, createHmac, generateKeyPairSync, sign as cryptoSign, type KeyObject } from 'node:crypto';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { IDENTITY_PROVIDER, safeNextPath, startOAuth, verifyIdToken, type VerifyOptions } from './auth';
 
 const ISSUER = 'https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_TEST';
 const AUDIENCE = 'client123';
@@ -83,5 +83,47 @@ describe('safeNextPath', () => {
     ['/\\evil.example.com', '/app'],
   ])('%j -> %j', (input, expected) => {
     expect(safeNextPath(input)).toBe(expected);
+  });
+});
+
+describe('startOAuth', () => {
+  const APP_URL = 'http://localhost:3000';
+
+  // `config` reads the environment lazily, so setting it here is enough; nothing here is a
+  // secret and no value of ours appears in this file.
+  beforeAll(() => {
+    process.env.USER_POOL_CLIENT_ID = AUDIENCE;
+    process.env.COGNITO_DOMAIN = 'chaukanna-test.auth.ap-south-1.amazoncognito.com';
+  });
+
+  function authorizeParams() {
+    const { authorizeUrl } = startOAuth(APP_URL);
+    const url = new URL(authorizeUrl);
+    return { url, params: url.searchParams };
+  }
+
+  it('sends the guardian straight to Google, not the provider chooser', () => {
+    expect(authorizeParams().params.get('identity_provider')).toBe(IDENTITY_PROVIDER);
+  });
+
+  it('asks for an authorization code with PKCE and the three scopes the pool allows', () => {
+    const { params } = authorizeParams();
+    expect(params.get('response_type')).toBe('code');
+    expect(params.get('code_challenge_method')).toBe('S256');
+    expect(params.get('scope')).toBe('openid email profile');
+    expect(params.get('redirect_uri')).toBe(`${APP_URL}/api/auth/callback`);
+  });
+
+  it('derives the challenge from the verifier it returns', () => {
+    const { verifier, authorizeUrl } = startOAuth(APP_URL);
+    const expected = createHash('sha256').update(verifier).digest('base64url');
+    expect(new URL(authorizeUrl).searchParams.get('code_challenge')).toBe(expected);
+  });
+
+  it('never reuses a state or a verifier', () => {
+    const a = startOAuth(APP_URL);
+    const b = startOAuth(APP_URL);
+    expect(a.state).not.toBe(b.state);
+    expect(a.verifier).not.toBe(b.verifier);
   });
 });

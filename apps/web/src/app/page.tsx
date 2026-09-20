@@ -37,7 +37,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ a
       ) : (
         // A plain anchor: the login route handler must not be prefetched.
         <a href="/api/auth/login?next=/app" className={cta}>
-          Sign in as a guardian
+          Continue with Google
         </a>
       )}
     </main>

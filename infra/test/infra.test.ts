@@ -82,6 +82,46 @@ describe('ChaukannaStack', () => {
     });
   });
 
+  test('google is the only sign-in route: no native provider, no self sign-up', () => {
+    const template = synth();
+    // Dropping COGNITO from the client is what removes the password form and the sign-up link
+    // from managed login. If this ever reads ['COGNITO', 'Google'] the password path is back.
+    template.hasResourceProperties('AWS::Cognito::UserPoolClient', {
+      SupportedIdentityProviders: ['Google'],
+      ExplicitAuthFlows: Match.absent(),
+    });
+    template.hasResourceProperties('AWS::Cognito::UserPool', {
+      AdminCreateUserConfig: Match.objectLike({ AllowAdminCreateUserOnly: true }),
+    });
+  });
+
+  test('google client id and secret are dynamic references, never literals', () => {
+    const template = synth();
+    template.hasResourceProperties('AWS::Cognito::UserPoolIdentityProvider', {
+      ProviderName: 'Google',
+      ProviderType: 'Google',
+      ProviderDetails: Match.objectLike({
+        authorize_scopes: 'openid email profile',
+        client_id: Match.stringLikeRegexp('^\\{\\{resolve:secretsmanager:chaukanna/google-oauth:'),
+        client_secret: Match.stringLikeRegexp('^\\{\\{resolve:secretsmanager:chaukanna/google-oauth:'),
+      }),
+    });
+  });
+
+  test('the pool only ever holds an email google itself verified', () => {
+    synth().hasResourceProperties('AWS::Cognito::UserPoolIdentityProvider', {
+      AttributeMapping: Match.objectLike({ email: 'email', email_verified: 'email_verified' }),
+    });
+  });
+
+  test('the client is created after the provider it names', () => {
+    const client = Object.values(
+      synth().findResources('AWS::Cognito::UserPoolClient'),
+    )[0] as { DependsOn?: string[] | string };
+    const dependsOn = [client.DependsOn ?? []].flat();
+    expect(dependsOn.some((d) => d.includes('Google'))).toBe(true);
+  });
+
   test('uses newer managed login with a branding style', () => {
     const template = synth();
     template.hasResourceProperties('AWS::Cognito::UserPoolDomain', { ManagedLoginVersion: 2 });

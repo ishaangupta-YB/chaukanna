@@ -120,6 +120,14 @@ export function redirectUri(appUrl: string): string {
   return `${appUrl}/api/auth/callback`;
 }
 
+/**
+ * The name of the Cognito identity provider guardians sign in with. The user pool client
+ * supports this one and nothing else, so naming it here only skips the provider chooser that
+ * managed login would otherwise show for a single button. It is not a security control: the
+ * pool refuses every other provider regardless of what arrives on the query string.
+ */
+export const IDENTITY_PROVIDER = 'Google';
+
 export function startOAuth(appUrl: string): OAuthStart {
   const state = randomBytes(16).toString('base64url');
   const verifier = randomBytes(32).toString('base64url');
@@ -132,6 +140,7 @@ export function startOAuth(appUrl: string): OAuthStart {
     state,
     code_challenge: challenge,
     code_challenge_method: 'S256',
+    identity_provider: IDENTITY_PROVIDER,
   });
   return { state, verifier, authorizeUrl: `https://${config.cognitoDomain}/oauth2/authorize?${params}` };
 }
