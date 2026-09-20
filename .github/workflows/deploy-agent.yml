@@ -80,12 +80,5 @@ jobs:
       - run: npm i -g @aws/agentcore
       - run: uv sync --frozen
       - run: uv run pytest -q          # fixture replay gates the deploy
-      - run: |
-          agentcore configure \
-            --name chaukanna-drill \
-            --entrypoint chaukanna_agent.server:app \
-            --container-runtime DOCKER \
-            --ecr $(aws ecr describe-repositories --repository-names chaukanna-drill --query 'repositories[0].repositoryUri' --output text 2>/dev/null || aws ecr create-repository --repository-name chaukanna-drill --query 'repository.repositoryUri' --output text) \
-            --region ap-northeast-1 \
-            --non-interactive
+      - run: agentcore create --name chaukanna-drill --dockerfile Dockerfile --entrypoint chaukanna_agent.server:app --region ap-northeast-1 --non-interactive
       - run: agentcore deploy --target chaukanna-drill -y
