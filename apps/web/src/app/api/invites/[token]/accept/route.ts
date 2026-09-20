@@ -4,12 +4,17 @@ import { assertSameOrigin, handle } from '@/lib/http';
 import { acceptInvite } from '@/lib/invites';
 import { LEARNER_COOKIE } from '@/lib/learner-session';
 import { cookieOptions } from '@/lib/session';
+import { rateLimitInviteAccept } from '@/lib/rate-limit';
 
 /** Idempotent: a double tap returns the same member and a fresh learner cookie. */
 export async function POST(request: Request, { params }: { params: Promise<{ token: string }> }) {
   return handle('invites.accept', async () => {
     assertSameOrigin(request, config.appUrl(new URL(request.url).origin));
     const { token } = await params;
+
+    // Rate limit invite acceptance attempts
+    await rateLimitInviteAccept(token, request);
+
     const { member, session } = await acceptInvite(token);
     const response = NextResponse.json(
       { memberId: member.memberId, language: member.language, status: member.status },
