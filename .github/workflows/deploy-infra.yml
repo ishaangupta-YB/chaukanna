@@ -43,12 +43,36 @@ jobs:
     if: needs.preflight.outputs.configured == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v7
+      - id: creds
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
-      - uses: actions/setup-node@v4
+      # An OIDC denial says only "Not authorized to perform sts:AssumeRoleWithWebIdentity" and
+      # never which subject was presented, which cost this repository a day: GitHub issues the
+      # id-bearing form `repo:<org>@<orgId>/<repo>@<repoId>:ref:...` and the trust policy listed
+      # only `repo:<org>/<repo>:*`. Printing the claim on failure turns that into one glance.
+      - name: Explain the OIDC denial
+        if: failure() && steps.creds.outcome == 'failure'
+        run: |
+          DECODE='import base64,json,sys; t=json.load(sys.stdin)["value"].split(".")[1]; print(json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))["sub"])'
+          SUB=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                  "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" \
+                | python3 -c "$DECODE")
+          {
+            echo "### Could not assume the deploy role"
+            echo
+            echo "GitHub presented this OIDC subject:"
+            echo
+            echo '```'
+            echo "$SUB"
+            echo '```'
+            echo
+            echo "The trust policy on \`AWS_ROLE_TO_ASSUME\` must have a \`sub\` pattern matching it."
+            echo "Re-run \`scripts/setup-github-oidc.sh ${{ github.repository }}\` to write both forms."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm

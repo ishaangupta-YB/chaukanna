@@ -44,14 +44,36 @@ jobs:
       run:
         working-directory: apps/agent
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@v7
+      - id: creds
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-northeast-1
-      - uses: actions/setup-node@v4
+      # See the same step in deploy-infra.yml: an OIDC denial never names the subject it presented,
+      # so print it rather than guess at the trust policy a second time.
+      - name: Explain the OIDC denial
+        if: failure() && steps.creds.outcome == 'failure'
+        run: |
+          DECODE='import base64,json,sys; t=json.load(sys.stdin)["value"].split(".")[1]; print(json.loads(base64.urlsafe_b64decode(t + "=" * (-len(t) % 4)))["sub"])'
+          SUB=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+                  "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" \
+                | python3 -c "$DECODE")
+          {
+            echo "### Could not assume the deploy role"
+            echo
+            echo "GitHub presented this OIDC subject:"
+            echo
+            echo '```'
+            echo "$SUB"
+            echo '```'
+            echo
+            echo "The trust policy on \`AWS_ROLE_TO_ASSUME\` must have a \`sub\` pattern matching it."
+            echo "Re-run \`scripts/setup-github-oidc.sh ${{ github.repository }}\` to write both forms."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-node@v7
         with: { node-version: 20 }
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10
       - run: npm i -g @aws/agentcore
       - run: uv sync --frozen
       - run: uv run pytest -q          # fixture replay gates the deploy

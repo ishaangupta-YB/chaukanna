@@ -49,6 +49,9 @@ if ! printf '%s' "$REPO" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; then
   usage
 fi
 
+REPO_OWNER="${REPO%%/*}"
+REPO_NAME="${REPO##*/}"
+
 aws_cli() {
   if [ -n "$PROFILE" ]; then
     aws --profile "$PROFILE" "$@"
@@ -67,6 +70,18 @@ ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${ROLE_NAME}"
 # The trust policy. `sub` is pinned to this one repository (any branch, any workflow); an OIDC
 # role without that StringLike can be assumed by any repository on GitHub, which is why
 # docs/AWS_SETUP.md calls the restriction mandatory.
+#
+# Two patterns, not one. GitHub issues the subject claim in two shapes and which one a repository
+# gets is not ours to choose:
+#
+#   repo:<org>/<repo>:ref:refs/heads/main                     the long-standing form
+#   repo:<org>@<orgId>/<repo>@<repoId>:ref:refs/heads/main    the newer form, with database ids
+#
+# This repository gets the second one, and a policy carrying only the first denies every run with
+# `Not authorized to perform sts:AssumeRoleWithWebIdentity` and no hint as to why. The `@*` in the
+# second pattern cannot be widened by an attacker: `@` is not a legal character in a GitHub user,
+# organisation or repository name, so only GitHub's own id substitution can produce a subject that
+# matches it.
 TRUST_POLICY=$(cat <<JSON
 {
   "Version": "2012-10-17",
@@ -77,7 +92,12 @@ TRUST_POLICY=$(cat <<JSON
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": { "${PROVIDER_HOST}:aud": "${AUDIENCE}" },
-        "StringLike": { "${PROVIDER_HOST}:sub": "repo:${REPO}:*" }
+        "StringLike": {
+          "${PROVIDER_HOST}:sub": [
+            "repo:${REPO}:*",
+            "repo:${REPO_OWNER}@*/${REPO_NAME}@*:*"
+          ]
+        }
       }
     }
   ]
@@ -106,6 +126,7 @@ else
   echo "  role:              ${ROLE_ARN}  (WILL BE CREATED)"
 fi
 echo "  trusted repo:      repo:${REPO}:*  (this repository only, any branch)"
+echo "                     repo:${REPO_OWNER}@*/${REPO_NAME}@*:*  (same repository, id-bearing subject)"
 echo "  attached policy:   ${POLICY_ARN}"
 echo
 echo "$TRUST_POLICY"

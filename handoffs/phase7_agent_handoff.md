@@ -16,8 +16,29 @@ the team can sign into.
 | Voice agent | AgentCore runtime `chaukanna_drill`, `ap-northeast-1` | `READY` |
 | Scoring | Step Functions `chaukanna-scoring`, 5 Lambdas, guardrail `chaukanna-drill-redaction` | deployed, guardrail `READY`, **zero executions** |
 | Scheduling | `chaukanna-ring` Lambda + EventBridge Scheduler | live |
-| CI | GitHub OIDC provider + `chaukanna-github-deploy`, trust scoped to `repo:ishaangupta-YB/chaukanna:*` | role exists; `AWS_ROLE_TO_ASSUME` repo secret unconfirmed |
+| CI | GitHub OIDC provider + `chaukanna-github-deploy`, trust scoped to this repository in both subject forms | secret set; **trust policy must be re-applied** — see below |
 | `DEMO_MODE` | Amplify branch env var | **on** — a public auth bypass; turn it off after judging |
+
+## Read this first: the CI deploy role needs one command
+
+Both workflows have been failing at the credentials step with `Not authorized to perform
+sts:AssumeRoleWithWebIdentity`. CloudTrail in `ap-south-1` shows why — GitHub presents
+
+```
+repo:ishaangupta-YB@52467684/chaukanna@1377526573:ref:refs/heads/main
+```
+
+and the trust policy only allowed `repo:ishaangupta-YB/chaukanna:*`. The provider, the role, the
+audience and the `AWS_ROLE_TO_ASSUME` secret were all correct the whole time; the subject claim
+now carries the owner and repository database ids. `scripts/setup-github-oidc.sh` writes both
+forms, so re-running it against the account fixes CI:
+
+```bash
+scripts/setup-github-oidc.sh ishaangupta-YB/chaukanna --profile chaukanna
+```
+
+It is idempotent — the provider, role and policy attachment are left alone and only the trust
+policy is rewritten. Until it runs, every push touching `infra/**` or `apps/agent/**` is red.
 
 ## Read this before you deploy or record: four permission gaps
 

@@ -194,9 +194,22 @@ scripts/setup-github-oidc.sh <org>/<repo> --profile chaukanna
 gh secret set AWS_ROLE_TO_ASSUME --repo <org>/<repo> --body '<the printed role ARN>'
 ```
 
-The trust policy is scoped to this one repository (`repo:<org>/<repo>:*`). The script prints the
-exact role, policy and trust document it is about to create and waits for confirmation, so there
-is nothing to take on trust from this file.
+The trust policy is scoped to this one repository, and carries two `sub` patterns because GitHub
+issues the subject claim in two shapes:
+
+```
+repo:<org>/<repo>:ref:refs/heads/main                     the long-standing form
+repo:<org>@<orgId>/<repo>@<repoId>:ref:refs/heads/main    the newer form, with database ids
+```
+
+This repository gets the second. A policy listing only the first denies every run with
+`Not authorized to perform sts:AssumeRoleWithWebIdentity` and names nothing, which is why both
+workflows decode and print the subject they actually presented when the credentials step fails.
+The `@*` wildcard cannot be widened by anyone: `@` is not legal in a GitHub user, organisation or
+repository name, so only GitHub's own id substitution can produce a matching subject.
+
+The script prints the exact role, policy and trust document it is about to create and waits for
+confirmation, so there is nothing to take on trust from this file.
 
 ---
 
