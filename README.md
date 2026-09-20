@@ -202,14 +202,31 @@ is nothing to take on trust from this file.
 
 ## Phase Gates
 
-- [x] **Phase 0: Foundations** — Monorepo scaffolded, CDK stack synthesized, Next.js app with `/api/health`, CI/CD workflows ready.
-- [ ] **Phase 1: Domain and Consent** — Guardian invite flow & learner consent. Built and verified locally against the deployed stack; gate waits on the Amplify deploy.
-- [ ] **Phase 2: The Agent, Locally** — Hindi drill runs end-to-end in terminal with tripwire. Built, fixture suite green, real model rehearsed; gate waits on a recorded voice run. The spoken break character line is deliberately deferred: the drill still ends on time, silently.
-- [ ] **Phase 3: The Agent, in the Browser** — Drill runs from phone browser against AgentCore.
-- [ ] **Phase 4: Drill Lifecycle** — Scheduled drill rings inside the window.
-- [ ] **Phase 5: Scoring and Debrief** — Finished drill produces a band and spoken debrief.
-- [ ] **Phase 6: Authorization, Safety, Dashboard** — Cedar policy denial, kill switch, trend dashboard.
-- [ ] **Phase 7: Demo and Submission** — Final walkthrough, video, documentation.
+A gate is passed only when it has been demonstrated on the deployed system. Several phases are
+fully built and deployed but wait on a gate that needs a person and a phone; those are marked
+honestly rather than ticked.
+
+| Phase | Built | Deployed | Gate passed | What the gate still needs |
+|---|---|---|---|---|
+| 0 Foundations | yes | yes | yes | — |
+| 1 Domain and consent | yes | yes | yes | — |
+| 2 The agent, locally | yes | n/a | **no** | A recorded Hindi voice run with the tripwire firing |
+| 3 The agent, in the browser | yes | yes | **no** | A real drill from a phone on mobile data |
+| 4 Drill lifecycle | yes | yes | **no** | A scheduled drill ringing unattended inside the window |
+| 5 Scoring and debrief | yes | yes | **no** | The pipeline has never executed once; see below |
+| 6 Authorization, safety, dashboard | yes | yes | yes | — |
+| 7 Demo and submission | in progress | — | **no** | Video, writeup, blog, submission |
+
+**Phase 6 is verified against the deployed policy store**, not only in tests: all six Cedar
+statements, all four actions, eleven allow/deny cases including a guardian denied a transcript
+with sharing off and permitted with it on, and a paused learner refused a new drill by the
+`forbid` rather than by a branch.
+
+**Phase 5 is the one to watch before recording.** Every piece is deployed and healthy — the
+Bedrock guardrail is `READY`, all five Lambdas exist, the `chaukanna-scoring` state machine is
+live — but it has **zero executions**. The demo seed writes its score rows directly, so a
+dashboard trend proves nothing about the pipeline. Run one execution end to end before you rely
+on a debrief, or on a Step Functions graph, on camera.
 
 ---
 

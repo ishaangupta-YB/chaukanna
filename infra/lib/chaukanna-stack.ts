@@ -413,6 +413,11 @@ export class ChaukannaStack extends cdk.Stack {
           'dynamodb:DeleteItem',
           'dynamodb:ConditionCheckItem',
           'dynamodb:Query',
+          // `listScores` reads a whole member card's scores in one BatchGetItem. It is a separate
+          // IAM action from GetItem and is not implied by it, so without this line the guardian
+          // dashboard and the audit log throw for any household that has ever run a drill — and
+          // only for those, which is why an empty demo household looks perfectly healthy.
+          'dynamodb:BatchGetItem',
         ],
         resources: [this.table.tableArn, `${this.table.tableArn}/index/*`],
       }),
