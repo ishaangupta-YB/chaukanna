@@ -4,6 +4,12 @@
 
 Chaukanna is an interactive defense simulator designed to protect Indian families from digital arrest fraud and coercion scams. Guardians schedule realistic, culturally nuanced practice scam calls conducted by an AI voice agent (powered by Amazon Nova 2 Sonic). Learners practice recognizing red flags and executing safety tripwires in real time, receiving actionable spoken and visual debriefs immediately afterwards.
 
+**Live:** <https://main.d22ofb6t13cyj2.amplifyapp.com> (AWS Amplify Hosting, `ap-south-1`)
+
+---
+
+**New here? [USER_GUIDE.md](USER_GUIDE.md) walks you from a clean clone to a finished drill, a spoken debrief and a guardian dashboard.**
+
 ---
 
 ## Prime Directives
@@ -43,6 +49,33 @@ chaukanna/
 - **Data & Auth:** DynamoDB single-table (`ap-south-1`), S3 encrypted storage, Cognito User Pool for Guardians federated to Google (no passwords anywhere), single-use signed tokens for Learners.
 - **CI/CD:** GitHub Actions with AWS IAM OIDC roles.
 
+### The 30 second picture
+
+```
+  Guardian (Cognito, Google sign-in)          Learner (signed invite link, no account)
+        |                                             |
+        +--------------- Next.js 15 on Amplify Hosting (ap-south-1) ---------------+
+                         |  SSR compute role, no access keys                       |
+                         |                                                         |
+        Verified Permissions  ......  every sensitive read: allow or default deny   |
+                         |                                                         |
+        DynamoDB `chaukanna`  +  S3 `chaukanna-artifacts-*`  (lifecycle + ttl)      |
+                         |                                                         |
+        EventBridge Scheduler -> ring Lambda -> drill goes `due`                    |
+                                                                                   |
+                 browser opens a presigned wss:// straight to ----------------------+
+                         |
+              AgentCore Runtime (ap-northeast-1)   <- Nova 2 Sonic is not in Mumbai
+              Strands BidiAgent, tripwire + safe word + 6 min cap on the transport
+                         |
+              call ends -> transcript to S3, drill -> `ended`
+                         |
+              Step Functions `chaukanna-scoring` (ap-south-1)
+              redact (Bedrock Guardrails) -> judge (Haiku 4.5) -> score -> debrief (Polly) -> finish
+                         |
+              SCORE row -> learner debrief (quotes) / guardian dashboard (bands only)
+```
+
 ---
 
 ## Quick Start (Local Development)
@@ -80,6 +113,25 @@ It is an authentication bypass and is off by default. With `DEMO_MODE` unset, `/
 answers 404 and a demo cookie is ignored entirely, so one that escapes a demo deployment is inert
 everywhere else. Demo households are identifiable by an `ownerSub` beginning with `demo-`. Never
 set it on a deployment a real family uses.
+
+#### Seed the demo data
+
+Before a recording, put a real two-point trend on the dashboard instead of typing rows on camera.
+The script writes one household, one consented learner, one `at_risk` drill and one later `safe`
+drill, through the same `lib/db/` helpers and the same zod schemas the app uses.
+
+```bash
+cd apps/web
+AWS_PROFILE=chaukanna npm run seed:demo                              # into the demo household
+AWS_PROFILE=chaukanna npm run seed:demo -- --owner-sub=<cognito sub> # into your own household
+AWS_PROFILE=chaukanna npm run seed:demo -- --wipe                    # remove only those rows
+```
+
+It defaults to `AWS_REGION=ap-south-1` and `TABLE_NAME=chaukanna`; set either to point elsewhere.
+Re-running is a no-op — ids are derived, not random — and it prints what the dashboard will show
+(`at_risk -> safe`, overall `better`, the weakest tactic and its count) by reading the rows back
+through `lib/dashboard.ts`. `--wipe` only ever deletes keys belonging to the household it just
+derived; it never scans.
 
 ### 2. Infrastructure (CDK)
 
@@ -153,17 +205,64 @@ The trust policy is scoped to this one repository (`repo:<org>/<repo>:*`); see
 
 ---
 
+## Demo access
+
+There are no passwords in this product, and there are none in this file.
+
+- **Guardian.** Sign in at the live URL with Google through Cognito managed login. Any Google
+  account works; the household id is derived from the Cognito subject, so a first sign-in creates
+  an empty household of your own.
+- **Judge demo login.** With `DEMO_MODE=on` set as an Amplify environment variable on the branch,
+  the landing page grows a "Judging this? Try it now, no sign-in needed" button that mints a
+  throwaway identity. It is off unless that variable is set, and `/api/demo/*` answers 404 when it
+  is not. Set it in the Amplify console, never in the repository.
+- **Learner.** A learner never has an account, a password or an email address. The guardian's
+  dashboard prints a single-use invite link (and a QR code for it); that link *is* the credential,
+  it expires, and it is revoked on logout.
+- **AWS.** Everything server-side uses the Amplify SSR compute role or a GitHub OIDC role. There
+  are no AWS access keys anywhere in this repository or in its history. Runtime secrets — today
+  only the invite signing key — live in Secrets Manager under `chaukanna/invite-signing-key` and
+  are read at request time. Non-secret configuration comes from Amplify environment variables and
+  CDK outputs; `.env.example` lists the names and none of the values.
+
+---
+
+## Credits
+
+No sample, template or scaffold has been copied into this repository. Where a published example
+or document informed an implementation, it is listed here with its licence.
+
+| Source | Licence | How it is used |
+|---|---|---|
+| [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app) scaffold | MIT | `apps/web` was initialised with it; the generated files have since been rewritten. |
+| [AWS CDK v2](https://github.com/aws/aws-cdk) project scaffold (`cdk init app --language typescript`) | Apache-2.0 | `infra/` layout only. |
+| [`bedrock-agentcore` Python SDK](https://github.com/aws/bedrock-agentcore-sdk-python) | Apache-2.0 | A dependency of `apps/agent`. No sample code copied. |
+| [Strands Agents SDK](https://github.com/strands-agents/sdk-python) | Apache-2.0 | `BidiAgent` is used as a dependency; the drill loop, tripwire and transport are ours. |
+| [AgentCore Runtime WebSocket contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-get-started-websocket.html) (port 8080, `/ws`, `/ping`) | AWS documentation | Implemented from the published contract, not from sample code. |
+| [AWS SDK for JavaScript v3](https://github.com/aws/aws-sdk-js-v3) and [botocore](https://github.com/boto/botocore) | Apache-2.0 | Dependencies. The SigV4 presigner for `wss://` in `apps/web/src/lib/agentcore.ts` was written by hand and pinned byte for byte against output from botocore's own signer. |
+| Tailwind CSS, React, zod, vitest, jest, ruff, uv | MIT / Apache-2.0 / BSD | Dependencies, unmodified. |
+
+Every other library is used as a dependency under its own licence. This project is Apache-2.0.
+
+---
+
 ## AI Coding Tools & Hackathon Compliance
 
-In compliance with hackathon regulations, the following AI coding assistants were used to build this repository:
-- **Google Antigravity AI**
-- **Claude Code** (Anthropic), Phases 1, 2 and 3
+In compliance with hackathon regulations, the following AI coding assistants were used to build
+this repository:
+
+- **Claude Code** (Anthropic) — Phases 1 through 7: web app, voice agent, scoring pipeline,
+  infrastructure, authorization and documentation.
+- **Google Antigravity AI** — early scaffolding and exploratory work.
+
+Contribution rules the team held itself to are in [CONTRIBUTING.md](CONTRIBUTING.md): every commit
+inside the event window from that member's own account, no code carried over from anyone's earlier
+projects, and a pre-commit hook (`scripts/check-staged.sh`, wired through `git config
+core.hooksPath .githooks`) that refuses a commit containing environment files, key material or a
+template filled with real ids.
 
 No third party samples or templates are copied into this repository. Libraries are used as
-dependencies under their own licences. The AgentCore Runtime WebSocket contract (port 8080, `/ws`,
-`/ping`) is implemented against the published
-[AWS documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-get-started-websocket.html)
-using the Apache 2.0 licensed `bedrock-agentcore` SDK as a dependency; no sample code is copied.
+dependencies under their own licences; see **Credits** above.
 
 ---
 
