@@ -80,5 +80,5 @@ jobs:
       - run: npm i -g @aws/agentcore
       - run: uv sync --frozen
       - run: uv run pytest -q          # fixture replay gates the deploy
-      - run: agentcore create --project-name chaukanna-drill --build Container --container Dockerfile --language Python --framework Strands --model-provider Bedrock --region ap-northeast-1
+      - run: agentcore create --project-name chaukanna-drill --build Container --container Dockerfile --region ap-northeast-1
       - run: agentcore deploy --target chaukanna-drill -y
