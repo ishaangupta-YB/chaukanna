@@ -674,3 +674,96 @@ describe('ChaukannaStack', () => {
     expect(outputs.JudgeModelId.Value).toBe('global.anthropic.claude-haiku-4-5-20251001-v1:0');
   });
 });
+
+/**
+ * Every AWS API each runtime role actually calls, against what it is granted.
+ *
+ * This exists because the stack has now shipped three permission gaps of the same shape, and
+ * none of them was visible from the code, from a local run or from a green deploy. A handler
+ * calls something its role was never granted; nothing fails at synth, at deploy or at import;
+ * and the gap only surfaces on a path nobody had exercised with real data. Two of the three were
+ * batch actions mistaken for being implied by their singular form, and the third was a read that
+ * looked like a write-only task.
+ *
+ * So the grants are pinned here, keyed to the call site that needs them. If a handler starts
+ * calling something new, this test is where it is supposed to be noticed.
+ */
+describe('runtime roles cover the calls their handlers make', () => {
+  /**
+   * The statements of one role's own inline policy, found by the logical id prefix CDK gives it.
+   *
+   * Scoping to the role is the whole point. "Some statement somewhere grants GetObject on
+   * `drill/redacted/`" is true whenever the *judge* is wired up correctly, and would have passed
+   * happily while the debrief writer had no read permission at all.
+   */
+  function statementsForRole(template: Template, rolePrefix: string) {
+    return Object.entries(template.findResources('AWS::IAM::Policy'))
+      .filter(([id]) => id.startsWith(`${rolePrefix}DefaultPolicy`))
+      .flatMap(([, policy]) => policy.Properties.PolicyDocument.Statement as {
+        Action: string | string[];
+        Resource: unknown;
+      }[]);
+  }
+
+  function roleGrants(template: Template, rolePrefix: string, action: string, needle: string): boolean {
+    return statementsForRole(template, rolePrefix).some(
+      (statement) =>
+        ([] as string[]).concat(statement.Action).includes(action) &&
+        JSON.stringify(statement.Resource).includes(needle),
+    );
+  }
+
+  it('lets the debrief writer read the redacted transcript it quotes', () => {
+    // `debrief_handler` calls `_load_redacted(event)` before it writes a word: the turning point
+    // it quotes comes from the call. Granting only `s3:PutObject` makes every drill end with a
+    // band and silence, and the state machine's DebriefFailed catch hides it as a normal outcome.
+    expect(roleGrants(synth(), 'ScoringDebriefServiceRole', 's3:GetObject', 'drill/redacted/')).toBe(true);
+    expect(roleGrants(synth(), 'ScoringDebriefServiceRole', 's3:PutObject', 'debrief/')).toBe(true);
+  });
+
+  it('lets the judge read the redacted transcript', () => {
+    expect(roleGrants(synth(), 'ScoringJudgeServiceRole', 's3:GetObject', 'drill/redacted/')).toBe(true);
+  });
+
+  it('keeps everything after redaction away from the raw transcript', () => {
+    // `drill/transcript/` is readable by exactly one role, the redactor. Nothing downstream of
+    // it may reach the words the learner actually said (CLAUDE.md product rule 2).
+    for (const role of ['ScoringJudgeServiceRole', 'ScoringDebriefServiceRole', 'ScoringScoreServiceRole', 'ScoringFinishServiceRole']) {
+      expect(roleGrants(synth(), role, 's3:GetObject', 'drill/transcript/')).toBe(false);
+    }
+    expect(roleGrants(synth(), 'ScoringRedactServiceRole', 's3:GetObject', 'drill/transcript/')).toBe(true);
+  });
+
+  it('lets the SSR compute role batch-read scores, which listScores does', () => {
+    // BatchGetItem is a separate IAM action and is not implied by GetItem. Without it the
+    // guardian dashboard and the audit log throw for any household that has run a drill.
+    expect(statementFor(synth(), 'dynamodb:BatchGetItem')).toBeDefined();
+    expect(statementFor(synth(), 'dynamodb:GetItem')).toBeDefined();
+  });
+
+  it('lets the SSR compute role batch-authorize, which the dashboard does', () => {
+    // Likewise: BatchIsAuthorized is not implied by IsAuthorized.
+    expect(statementFor(synth(), 'verifiedpermissions:BatchIsAuthorized')).toBeDefined();
+    expect(statementFor(synth(), 'verifiedpermissions:IsAuthorized')).toBeDefined();
+  });
+
+  it('still gives the score task no AWS permissions at all', () => {
+    // The determinism claim rests on this: the model classifies, code counts, and the counting
+    // reads nothing. A grant appearing here means the task grew a dependency it should not have.
+    const template = synth();
+    const scoreRole = Object.entries(template.findResources('AWS::IAM::Role')).find(([id]) =>
+      id.startsWith('ScoringScoreServiceRole'),
+    );
+    expect(scoreRole).toBeDefined();
+    const scorePolicies = Object.entries(template.findResources('AWS::IAM::Policy')).filter(([id]) =>
+      id.startsWith('ScoringScoreServiceRoleDefaultPolicy'),
+    );
+    for (const [, policy] of scorePolicies) {
+      for (const statement of policy.Properties.PolicyDocument.Statement) {
+        for (const action of ([] as string[]).concat(statement.Action)) {
+          expect(action.startsWith('logs:')).toBe(true);
+        }
+      }
+    }
+  });
+});

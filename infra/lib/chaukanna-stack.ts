@@ -791,6 +791,22 @@ export class ChaukannaStack extends cdk.Stack {
         resources: ['*'], // Polly has no resource level permissions; AWS requires "*" here
       }),
     );
+    /*
+     * The debrief writer reads the redacted transcript before it writes anything: the turning
+     * point it quotes and the sentences it teaches come from the call itself, so
+     * `debrief_handler` opens `drill/redacted/<drill>.json` exactly as the judge does. Without
+     * this grant the Debrief task fails on S3, the state machine catches it, routes to
+     * `FinishWithoutDebrief`, and every drill ends with a band and silence — which is a failure
+     * the product is designed to survive and therefore never reports as one.
+     *
+     * Redacted only, like the judge. Nothing after redaction goes near `drill/transcript/`.
+     */
+    debriefFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:GetObject'],
+        resources: [this.artifactsBucket.arnForObjects('drill/redacted/*')],
+      }),
+    );
     debriefFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['s3:PutObject'],
