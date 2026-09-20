@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { LearnerShell } from '@/components/learner/LearnerShell';
 import { other, pickLang } from '@/components/learner/lang';
 import { loadLearnerMember } from '@/components/learner/learner-page';
+import { SharingToggle } from '@/components/learner/SharingToggle';
 import { StopAllButton } from '@/components/learner/StopAllButton';
 import { WithdrawButton } from '@/components/learner/WithdrawButton';
 import { lastDebriefableDrill } from '@/lib/debrief';
@@ -82,6 +83,7 @@ export default async function LearnerHome({ searchParams }: { searchParams: Prom
           {t(lang, 'homeChangeWindow')}
         </Link>
       </section>
+      <SharingToggle lang={lang} memberId={member.memberId} sharing={member.transcriptSharing} />
       {active ? (
         <WithdrawButton lang={lang} memberId={member.memberId} />
       ) : (

@@ -1,5 +1,13 @@
 import type { Actor } from './access';
-import { DEFAULT_WINDOW, getWindow, pauseMember, putWindow, type DrillWindow, type Member } from './db';
+import {
+  DEFAULT_WINDOW,
+  getWindow,
+  pauseMember,
+  putWindow,
+  setTranscriptSharing,
+  type DrillWindow,
+  type Member,
+} from './db';
 import { log } from './log';
 
 export async function setWindow(member: Member, window: DrillWindow, by: Actor): Promise<void> {
@@ -20,4 +28,15 @@ export async function windowOrDefault(memberId: string): Promise<{ window: Drill
 export async function pauseAll(member: Member, by: Actor): Promise<void> {
   await pauseMember(member.householdId, member.memberId, new Date().toISOString());
   log.info('member.paused', { householdId: member.householdId, memberId: member.memberId, by });
+}
+
+/**
+ * The learner grants or withdraws transcript sharing. Only the learner: a guardian cannot give
+ * themselves permission to read a call, which is why this takes no actor and the route that calls
+ * it admits learners alone. The flag is off by default and the change is immediate, because the
+ * Cedar `ViewTranscript` policy reads this attribute on every request.
+ */
+export async function setSharing(member: Member, sharing: boolean): Promise<void> {
+  await setTranscriptSharing(member.householdId, member.memberId, sharing, new Date().toISOString());
+  log.info('member.sharing_set', { householdId: member.householdId, memberId: member.memberId, sharing });
 }

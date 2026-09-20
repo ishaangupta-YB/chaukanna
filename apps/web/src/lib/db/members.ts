@@ -75,6 +75,28 @@ export async function pauseMember(householdId: string, memberId: string, nowIso:
   );
 }
 
+/**
+ * The learner's own sharing decision, and nobody else's: `transcriptSharing` is the attribute the
+ * Cedar `ViewTranscript` policy reads, so this write is the whole of the guardian's permission to
+ * read what was said. Off by default, and reversible in one tap.
+ */
+export async function setTranscriptSharing(
+  householdId: string,
+  memberId: string,
+  sharing: boolean,
+  nowIso: string,
+): Promise<void> {
+  await ddb().send(
+    new UpdateCommand({
+      TableName: table(),
+      Key: keys.member(householdId, memberId),
+      UpdateExpression: 'SET transcriptSharing = :sharing, updatedAt = :now',
+      ConditionExpression: 'attribute_exists(pk)',
+      ExpressionAttributeValues: { ':sharing': sharing, ':now': nowIso },
+    }),
+  );
+}
+
 /** Replaces the outstanding invite. Any earlier link for this member stops working. */
 export async function setInvite(
   householdId: string,

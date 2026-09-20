@@ -65,6 +65,12 @@ const hi = {
   homeWithdrawDone: 'आपकी हाँ वापस ले ली गई है।',
   homeNoSession: 'यह पन्ना खोलने के लिए अपने परिवार के भेजे लिंक से आइए।',
   homeCallWaiting: 'एक अभ्यास कॉल आपका इंतज़ार कर रही है',
+  homeSharingLabel: 'मेरे परिवार को पढ़ने दें कि अभ्यास में मैंने क्या कहा',
+  homeSharingHelp: 'अभी सिर्फ़ आप ही पढ़ सकते हैं। आप जब चाहें बदल सकते हैं।',
+  homeSharingOn: 'परिवार आपकी बातें पढ़ सकता है',
+  homeSharingOff: 'आपकी बातें सिर्फ़ आपकी हैं',
+  homeSharingAllow: 'परिवार को पढ़ने दें',
+  homeSharingStop: 'पढ़ना बंद करें',
   homeOpenCall: 'अभ्यास कॉल खोलें',
 
   // The drill. The realism is in the conversation, never in the screen: it always says this is
@@ -199,6 +205,12 @@ const en: Dict = {
   homeWithdrawDone: 'Your yes has been taken back.',
   homeNoSession: 'Please open this page from the link your family sent you.',
   homeCallWaiting: 'A practice call is waiting for you',
+  homeSharingLabel: 'Let my family read what I said during practice',
+  homeSharingHelp: 'Right now only you can read it. You can change this whenever you want.',
+  homeSharingOn: 'Your family can read what you said',
+  homeSharingOff: 'What you said stays with you',
+  homeSharingAllow: 'Let my family read it',
+  homeSharingStop: 'Stop letting them read it',
   homeOpenCall: 'Open the practice call',
 
   drillRingingTitle: 'Practice call',
