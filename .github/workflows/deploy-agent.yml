@@ -99,4 +99,5 @@ jobs:
             }
           }
           EOF
+      - run: agentcore create --project-name chaukanna-drill --region ap-northeast-1 --defaults
       - run: agentcore deploy --target chaukanna-drill -y
