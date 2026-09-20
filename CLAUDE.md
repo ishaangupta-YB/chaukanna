@@ -13,7 +13,8 @@ Hackathon build, team of 4, public repository.
 5. **Never invent an API.** If unsure of an SDK shape, a model id, or a service limit, check the docs or the AWS sample repo. Confident wrong code costs more than a question.
 6. **Two strikes then stop.** If an approach fails twice, report it and use the documented fallback.
 7. **No secrets in the repo, ever.** This repository is public. Config comes from SSM Parameter Store and Secrets Manager at runtime, or from Amplify environment variables for non secrets.
-8. **Parallelize with multi-agents.** Use subagents/task agents in parallel for independent tasks (search, read, analyze, test, minor code changes/implementations). Launch multiple agents concurrently when work can be done without dependency conflicts. Do this if it helps in reducing context usage or speeds up execution. 
+8. **Parallelize with multi-agents.** Use subagents/task agents in parallel for independent tasks (search, read, analyze, test, minor code changes/implementations). Launch multiple agents concurrently when work can be done without dependency conflicts. Do this if it helps in reducing context usage or speeds up execution. **When using multi-agents, use medium thinking of opus 5 model only.**
+9. **Ask before destructive commands.** Before running any destructive or sensitive command (e.g., `rm -rf`, `git reset --hard`, `cdk destroy`, database drops, or any command that can cause permanent damage), ask the user for explicit confirmation. Do not auto-run such commands. 
 
 ## Stack, pinned, do not substitute
 
