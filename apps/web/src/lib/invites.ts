@@ -9,7 +9,7 @@ import { getInviteSigningKey } from './secrets';
 import { nowSeconds, randomId } from './signing';
 
 /** A second accept with the same token inside this window is a double tap, not a replay. */
-export const ACCEPT_GRACE_SECONDS = 10 * 60;
+export const ACCEPT_GRACE_SECONDS = 2 * 60;
 
 export function inviteUrl(appUrl: string, token: string): string {
   return `${appUrl}/join/${token}`;
