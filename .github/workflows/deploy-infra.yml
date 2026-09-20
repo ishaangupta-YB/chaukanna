@@ -79,5 +79,10 @@ jobs:
           cache-dependency-path: infra/package-lock.json
       - run: npm ci
         working-directory: infra
-      - run: npx cdk deploy --all --require-approval never
+      # Named stack, never `--all`. ChaukannaVoiceStack creates the AgentCore runtime only when
+      # AGENT_IMAGE names an image that already exists in ECR, so deploying it from here — where
+      # that variable is never set — would synth the stack without a runtime and CloudFormation
+      # would delete the live one. The voice stack is deployed from deploy-agent.yml, which builds
+      # the image first, or by hand as handoffs/phase3_agent_handoff.md describes.
+      - run: npx cdk deploy ChaukannaStack --require-approval never
         working-directory: infra
