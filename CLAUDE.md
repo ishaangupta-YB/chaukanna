@@ -13,6 +13,7 @@ Hackathon build, team of 4, public repository.
 5. **Never invent an API.** If unsure of an SDK shape, a model id, or a service limit, check the docs or the AWS sample repo. Confident wrong code costs more than a question.
 6. **Two strikes then stop.** If an approach fails twice, report it and use the documented fallback.
 7. **No secrets in the repo, ever.** This repository is public. Config comes from SSM Parameter Store and Secrets Manager at runtime, or from Amplify environment variables for non secrets.
+8. **Parallelize with multi-agents.** Use subagents/task agents in parallel for independent tasks (search, read, analyze, test, minor code changes/implementations). Launch multiple agents concurrently when work can be done without dependency conflicts. Do this if it helps in reducing context usage or speeds up execution. 
 
 ## Stack, pinned, do not substitute
 
@@ -140,3 +141,11 @@ Non secret values come from Amplify environment variables or CDK outputs. Secret
 - The README lists every AI coding tool used
 - Do not copy code from any team member's earlier projects. Reimplement
 - Each person adds to `LEARNINGS.md` as they go. The judging criteria score it
+
+## Security & commit hygiene (non-negotiable)
+
+- **Zero secrets in repo, ever.** No credentials, API keys, tokens, PII, or any sensitive data in code, configs, env files, docs, or commit history. `.env.local` and all `*.local.*` are gitignored. If a secret appears in a diff, stop immediately and rotate it.
+- **Secrets at runtime only.** All secrets come from SSM Parameter Store, Secrets Manager, or Amplify environment variables at runtime. Never hardcode, never check in.
+- **Commit messages:** Short, concise, imperative mood (e.g., "Add tripwire guard", "Fix scoring lambda timeout"). No "authored by", "co-authored-by", agent attribution, or verbose explanations.
+- **Phase commits:** One commit per logical phase step. Track progress with clear, atomic commits that map to PHASES.md tasks.
+- **Handoffs & learnings:** After a phase is **fully implemented and verified**, update the corresponding file in `handoffs/` with exact context/status, and append to `LEARNINGS.md`. Do not skip. Do not half-update.
