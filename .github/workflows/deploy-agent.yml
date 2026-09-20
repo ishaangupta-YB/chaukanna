@@ -99,5 +99,5 @@ jobs:
             }
           }
           EOF
-      - run: agentcore create --project-name chaukannadrill --region ap-northeast-1 --defaults
+      - run: agentcore create --project-name chaukannadrill --build Container --container Dockerfile --region ap-northeast-1
       - run: agentcore deploy --target chaukannadrill -y
