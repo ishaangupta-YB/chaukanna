@@ -91,11 +91,6 @@ jobs:
                 "dockerfile": "Dockerfile",
                 "platform": "linux/arm64"
               }
-            },
-            "runtime": {
-              "region": "ap-northeast-1",
-              "protocol": "HTTP",
-              "entrypoint": "python -m chaukanna_agent.server"
             }
           }
           EOF
