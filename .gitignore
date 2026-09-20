@@ -95,5 +95,8 @@ cdk-outputs.json
 
 # Project docs (kept private, not published to public repo)
 docs/
-# Local Claude Code session config
+
+# Local AI coding tool configuration, not part of the product
 .claude/
+.agents/
+skills-lock.json
