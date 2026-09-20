@@ -38,7 +38,7 @@ from .safety import StopPhrases
 from .scenario import Scenario, load_scenario
 from .session import DrillSession
 from .session_token import DrillSessionClaims, InvalidToken, signing_key, verify
-from .store import DrillClaimError, DrillStore
+from .store import DrillClaimError, DrillStore, transcript_key
 from .transport import BrowserTransport, TransportClosed, read_hello
 
 app = BedrockAgentCoreApp()
@@ -61,7 +61,12 @@ def store() -> DrillStore:
     global _store
     if _store is None:
         current = settings()
-        _store = DrillStore(region=current.data_region, table_name=current.table_name, bucket=current.artifacts_bucket)
+        _store = DrillStore(
+            region=current.data_region,
+            table_name=current.table_name,
+            bucket=current.artifacts_bucket,
+            scoring_state_machine_arn=current.scoring_state_machine_arn,
+        )
     return _store
 
 
@@ -220,6 +225,23 @@ async def _run_drill(websocket: Any, claims: DrillSessionClaims) -> None:
         scheduled_at=claims.scheduled_at,
         caller_pcm=sink.caller_pcm,
     )
+    # Scoring starts last, on purpose: after the browser has been told the call is over, so no
+    # learner waits on the pipeline, and after `finish` returned, so the transcript object the
+    # execution is about to be handed the key to actually exists. `start_scoring` never raises;
+    # a drill that could not be handed over is unscored, which the debrief screen handles.
+    try:
+        await asyncio.to_thread(
+            store().start_scoring,
+            record,
+            member_id=claims.member_id,
+            scheduled_at=claims.scheduled_at,
+            household_id=claims.household_id,
+            transcript_key=transcript_key(record.drillId),
+        )
+    except Exception as error:  # noqa: BLE001 - the store already swallows; this is the backstop
+        # Nothing after a finished drill may become a learner-facing error or a `release` of a row
+        # that is already `ended`. Log it and close the socket the way a good call closes.
+        event("drill_scoring_start_failed", claims.drill_id, level=logging.WARNING, errorName=type(error).__name__)
     with contextlib.suppress(Exception):
         await websocket.close(code=wire.CLOSE_NORMAL)
 

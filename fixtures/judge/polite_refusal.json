@@ -1,0 +1,49 @@
+{
+  "fixture": "polite_refusal",
+  "modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "promptVersion": "score.judge.v2",
+  "attempts": 1,
+  "flags": {
+    "stayed_on_call": {
+      "fired": false,
+      "evidence": ""
+    },
+    "accepted_secrecy": {
+      "fired": false,
+      "evidence": ""
+    },
+    "shared_identifier": {
+      "fired": false,
+      "evidence": ""
+    },
+    "agreed_to_move_money": {
+      "fired": false,
+      "evidence": ""
+    },
+    "accepted_authority": {
+      "fired": false,
+      "evidence": ""
+    }
+  },
+  "credits": {
+    "independent_verify": {
+      "fired": false,
+      "evidence": ""
+    },
+    "named_helpline": {
+      "fired": false,
+      "evidence": ""
+    },
+    "disconnected_early": {
+      "fired": true,
+      "evidence": "ended the call at stage S0",
+      "computed": true
+    }
+  },
+  "turningPoint": "Namaste, main courier department se baat kar raha hoon. Aapke naam se ek parcel hold par hai. Aap apna naam confirm kar sakte hain?",
+  "observed": {
+    "score": 80,
+    "band": "safe",
+    "rubricVersion": "prd.v1"
+  }
+}

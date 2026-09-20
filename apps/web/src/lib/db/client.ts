@@ -37,6 +37,8 @@ export const keys = {
   }),
   drillPrefix: 'DRILL#',
   drillEvents: (drillId: string) => `DRILL#${drillId}`,
+  /** The scoring pipeline's verdict, in the drill's own partition. Written only by `services/scoring`. */
+  score: (drillId: string) => ({ pk: `DRILL#${drillId}`, sk: 'SCORE' }),
   eventPrefix: 'EVT#',
   /**
    * A lifecycle event, in the same partition as the agent's in-call events. The agent numbers its

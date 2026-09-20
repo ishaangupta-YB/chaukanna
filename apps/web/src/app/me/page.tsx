@@ -4,6 +4,7 @@ import { other, pickLang } from '@/components/learner/lang';
 import { loadLearnerMember } from '@/components/learner/learner-page';
 import { StopAllButton } from '@/components/learner/StopAllButton';
 import { WithdrawButton } from '@/components/learner/WithdrawButton';
+import { lastDebriefableDrill } from '@/lib/debrief';
 import { pendingDrill } from '@/lib/drills';
 import { t, windowSummary, type MessageKey } from '@/lib/i18n';
 import { windowOrDefault } from '@/lib/members';
@@ -30,9 +31,10 @@ export default async function LearnerHome({ searchParams }: { searchParams: Prom
   }
 
   const lang = pickLang(langParam, member.language);
-  const [{ window }, waiting] = await Promise.all([
+  const [{ window }, waiting, lastFinished] = await Promise.all([
     windowOrDefault(member.memberId),
     pendingDrill(member.memberId),
+    lastDebriefableDrill(member.memberId),
   ]);
   const active = member.status === 'active';
   return (
@@ -50,6 +52,18 @@ export default async function LearnerHome({ searchParams }: { searchParams: Prom
             className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-emerald-700 px-6 py-3 text-center text-2xl font-bold text-white"
           >
             {t(lang, 'homeOpenCall')}
+          </Link>
+        </section>
+      )}
+      {/* The way back to the last debrief. It stays here: a learner may want to hear it again. */}
+      {lastFinished && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-semibold text-stone-700">{t(lang, 'homeLastResult')}</h2>
+          <Link
+            href={`/drill/${lastFinished.drillId}/debrief?lang=${lang}`}
+            className="inline-flex min-h-16 items-center justify-center rounded-2xl border-2 border-emerald-700 px-5 py-3 text-center text-2xl font-bold text-emerald-900"
+          >
+            {t(lang, 'debriefOpen')}
           </Link>
         </section>
       )}

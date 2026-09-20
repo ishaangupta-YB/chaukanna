@@ -16,6 +16,13 @@ const JWKS_REFRESH_MIN_INTERVAL_MS = 5 * 60 * 1000;
 export interface Guardian {
   sub: string;
   email: string | null;
+  /**
+   * True only for a judge demo session (see lib/demo.ts), which is an authentication bypass and
+   * not a real account. Required rather than optional on purpose: every place that builds a
+   * guardian has to say which kind it is, so a demo one can never be mistaken for a signed-in
+   * person by omission.
+   */
+  demo: boolean;
 }
 
 const Header = z.object({ alg: z.literal('RS256'), kid: z.string().min(1) });
@@ -61,7 +68,7 @@ export async function verifyIdToken(token: string, opts: VerifyOptions): Promise
   if (c.iss !== opts.issuer || c.aud !== opts.audience) return null;
   if (c.exp + CLOCK_SKEW_SECONDS <= now || c.iat - CLOCK_SKEW_SECONDS > now) return null;
 
-  return { sub: c.sub, email: c.email ?? null };
+  return { sub: c.sub, email: c.email ?? null, demo: false };
 }
 
 function decodeJson(b64: string): unknown {

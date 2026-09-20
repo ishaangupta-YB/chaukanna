@@ -356,4 +356,321 @@ describe('ChaukannaStack', () => {
     expect(outputs.SchedulerInvokeRoleArn.Export.Name).toBe('ChaukannaSchedulerInvokeRoleArn');
     expect(outputs.SchedulerInvokeRoleArn.Description).toContain('SCHEDULER_INVOKE_ROLE_ARN');
   });
+
+  // ---- Phase 5, scoring and debrief -------------------------------------------------------
+
+  test('the guardrail catches Aadhaar and PAN with regexes, because Bedrock has no entity for them', () => {
+    // The safety property of this phase. Bedrock Guardrails' PII enum has no India-specific
+    // types at all, so an Aadhaar or a PAN read aloud during a drill reaches the redacted
+    // transcript unless these three patterns exist. If this test goes red the product stores
+    // exactly the identifiers it exists to protect.
+    const guardrail = Object.values(synth().findResources('AWS::Bedrock::Guardrail'))[0];
+    const policy = guardrail.Properties.SensitiveInformationPolicyConfig;
+    const regexes: { Name: string; Pattern: string; Action: string; Description: string }[] =
+      policy.RegexesConfig;
+    const byName = Object.fromEntries(regexes.map((r) => [r.Name, r]));
+
+    expect(Object.keys(byName).sort()).toEqual(['aadhaar', 'long-digit-run', 'pan']);
+    for (const regex of regexes) {
+      expect(regex.Action).toBe('ANONYMIZE');
+      expect(regex.Description.length).toBeGreaterThan(0);
+    }
+    // Twelve digits, optionally grouped. Aadhaar never starts with 0 or 1.
+    expect(new RegExp(byName.aadhaar.Pattern).test('4321 8765 1234')).toBe(true);
+    // Five letters, four digits, a letter.
+    expect(new RegExp(byName.pan.Pattern).test('ABCDE1234F')).toBe(true);
+    // The same six digit threshold the agent's transport tripwire uses, applied again at rest.
+    expect(new RegExp(byName['long-digit-run'].Pattern).test('483920')).toBe(true);
+    expect(new RegExp(byName['long-digit-run'].Pattern).test('48392')).toBe(false);
+  });
+
+  test('the guardrail masks the identifiers a digital arrest script asks for', () => {
+    const guardrail = Object.values(synth().findResources('AWS::Bedrock::Guardrail'))[0];
+    const entities: { Type: string; Action: string }[] =
+      guardrail.Properties.SensitiveInformationPolicyConfig.PiiEntitiesConfig;
+    const types = entities.map((e) => e.Type);
+    for (const expected of [
+      'CREDIT_DEBIT_CARD_NUMBER',
+      'CREDIT_DEBIT_CARD_CVV',
+      'CREDIT_DEBIT_CARD_EXPIRY',
+      'PIN',
+      'PASSWORD',
+      'EMAIL',
+      'PHONE',
+      'ADDRESS',
+      'NAME',
+      'INTERNATIONAL_BANK_ACCOUNT_NUMBER',
+      'US_BANK_ACCOUNT_NUMBER',
+      'SWIFT_CODE',
+    ]) {
+      expect(types).toContain(expected);
+    }
+    for (const entity of entities) expect(entity.Action).toBe('ANONYMIZE');
+    // No India-specific type exists in the enum; naming one is rejected at deploy time.
+    expect(types.some((t) => t.startsWith('IN_'))).toBe(false);
+    expect(guardrail.Properties.Name).toBe('chaukanna-drill-redaction');
+    expect(guardrail.Properties.BlockedInputMessaging).toBeDefined();
+    expect(guardrail.Properties.BlockedOutputsMessaging).toBeDefined();
+  });
+
+  test('the guardrail version the lambdas are given is DRAFT, which is always what is deployed', () => {
+    const template = synth();
+    expect(template.findOutputs('GuardrailVersion').GuardrailVersion.Value).toBe('DRAFT');
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'chaukanna-scoring-redact',
+      Environment: { Variables: Match.objectLike({ GUARDRAIL_VERSION: 'DRAFT' }) },
+    });
+  });
+
+  test('all five scoring tasks exist on python 3.12, arm, from one source asset', () => {
+    const template = synth();
+    const expected: Record<string, string> = {
+      'chaukanna-scoring-redact': 'scoring_service.handlers.redact_handler',
+      'chaukanna-scoring-judge': 'scoring_service.handlers.judge_handler',
+      'chaukanna-scoring-score': 'scoring_service.handlers.score_handler',
+      'chaukanna-scoring-debrief': 'scoring_service.handlers.debrief_handler',
+      'chaukanna-scoring-finish': 'scoring_service.handlers.finish_handler',
+    };
+    const keys = new Set<string>();
+    for (const [name, handler] of Object.entries(expected)) {
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        FunctionName: name,
+        Runtime: 'python3.12',
+        Architectures: ['arm64'],
+        Handler: handler,
+        MemorySize: 512,
+      });
+    }
+    // One asset, five functions: same source tree and same exclusions, so CDK hashes it once.
+    for (const fn of Object.values(template.findResources('AWS::Lambda::Function'))) {
+      if (String(fn.Properties.FunctionName).startsWith('chaukanna-scoring-')) {
+        keys.add(fn.Properties.Code.S3Key);
+      }
+    }
+    expect(keys.size).toBe(1);
+  });
+
+  test('every scoring task knows the table, the bucket, the model and the voice', () => {
+    const template = synth();
+    for (const name of ['chaukanna-scoring-redact', 'chaukanna-scoring-finish']) {
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        FunctionName: name,
+        Environment: {
+          Variables: Match.objectLike({
+            DATA_REGION: Match.anyValue(),
+            TABLE_NAME: Match.anyValue(),
+            ARTIFACTS_BUCKET: Match.anyValue(),
+            // An inference profile, not a bare model id: on-demand throughput is not supported
+            // for this family and the bare id fails at runtime, not at deploy.
+            JUDGE_MODEL_ID: 'global.anthropic.claude-haiku-4-5-20251001-v1:0',
+            GUARDRAIL_ID: Match.anyValue(),
+            GUARDRAIL_VERSION: 'DRAFT',
+            // Polly has no hi-IN voice; Kajal is en-IN with hi-IN as an additional language.
+            DEBRIEF_VOICE_ID: 'Kajal',
+          }),
+        },
+      });
+    }
+  });
+
+  test('redaction reads the raw transcript and writes only the redacted copy', () => {
+    const template = synth();
+    const apply = statementFor(template, 'bedrock:ApplyGuardrail');
+    expect(apply).toBeDefined();
+    expect(JSON.stringify(apply!.Resource)).toContain('GuardrailArn');
+
+    const puts = policyStatements(template).filter((s) =>
+      JSON.stringify(s.Resource).includes('drill/redacted/*'),
+    );
+    const putActions = puts.flatMap((s) => ([] as string[]).concat(s.Action));
+    expect(putActions).toContain('s3:PutObject');
+    // Nothing may write back over the raw transcript, which the agent owns.
+    for (const statement of policyStatements(template)) {
+      if (([] as string[]).concat(statement.Action).includes('s3:PutObject')) {
+        expect(JSON.stringify(statement.Resource)).not.toContain('drill/transcript/');
+      }
+    }
+  });
+
+  test('judge and debrief may invoke the global profile and the model it routes to', () => {
+    // A `global.` inference profile can route the call to a model in another region, so a
+    // region-pinned foundation-model ARN denies exactly the requests the profile was chosen for.
+    const invokes = policyStatements(synth()).filter((s) =>
+      ([] as string[]).concat(s.Action).includes('bedrock:InvokeModel'),
+    );
+    expect(invokes).toHaveLength(2);
+    for (const statement of invokes) {
+      const resources = JSON.stringify(statement.Resource);
+      expect(resources).toContain('inference-profile/global.anthropic.claude-haiku-4-5-20251001-v1:0');
+      expect(resources).toContain('bedrock:*::foundation-model/anthropic.claude-haiku-4-5-*');
+    }
+  });
+
+  test('the score task has no AWS access at all: it is a pure function', () => {
+    // Models classify, code counts. The counting is a function of the judgement it was handed,
+    // so there is nothing for it to read and nothing for it to leak.
+    const template = synth();
+    const scoreRole = Object.entries(template.findResources('AWS::IAM::Role')).find(([id]) =>
+      id.startsWith('ScoringScoreServiceRole'),
+    );
+    expect(scoreRole).toBeDefined();
+    for (const policy of Object.values(template.findResources('AWS::IAM::Policy'))) {
+      const roles = JSON.stringify(policy.Properties.Roles ?? []);
+      if (!roles.includes(scoreRole![0])) continue;
+      for (const statement of policy.Properties.PolicyDocument.Statement) {
+        for (const action of ([] as string[]).concat(statement.Action)) {
+          expect(action.startsWith('bedrock:')).toBe(false);
+          expect(action.startsWith('s3:')).toBe(false);
+          expect(action.startsWith('dynamodb:')).toBe(false);
+          expect(action.startsWith('polly:')).toBe(false);
+        }
+      }
+    }
+  });
+
+  test('polly is the only wildcard resource added by phase 5', () => {
+    const polly = statementFor(synth(), 'polly:SynthesizeSpeech');
+    expect(polly).toBeDefined();
+    // SynthesizeSpeech has no resource level permissions; AWS requires "*".
+    expect(polly!.Resource).toBe('*');
+    expect(([] as string[]).concat(polly!.Action)).toEqual(['polly:SynthesizeSpeech']);
+  });
+
+  test('the debrief writes audio and the finish task writes rows, each in one place', () => {
+    const template = synth();
+    const audio = policyStatements(template).find(
+      (s) =>
+        ([] as string[]).concat(s.Action).includes('s3:PutObject') &&
+        JSON.stringify(s.Resource).includes('debrief/*'),
+    );
+    expect(audio).toBeDefined();
+
+    // Not the compute role, which also writes rows: the finish task's grant is exactly three
+    // actions, and the fact that it is exactly three is the thing worth pinning.
+    const finish = policyStatements(template).find(
+      (s) => ([] as string[]).concat(s.Action).length === 3 &&
+        ([] as string[]).concat(s.Action).includes('dynamodb:PutItem') &&
+        ([] as string[]).concat(s.Action).includes('dynamodb:UpdateItem'),
+    );
+    expect(finish).toBeDefined();
+    expect(([] as string[]).concat(finish!.Action).sort()).toEqual([
+      'dynamodb:GetItem',
+      'dynamodb:PutItem',
+      'dynamodb:UpdateItem',
+    ]);
+    // The score row lives in the table itself; no index is read by the scoring path.
+    expect(JSON.stringify(finish!.Resource)).not.toContain('index/*');
+  });
+
+  test('the pipeline is a Standard workflow, traced and logged', () => {
+    synth().hasResourceProperties('AWS::StepFunctions::StateMachine', {
+      StateMachineName: 'chaukanna-scoring',
+      // Standard on purpose: the runs are rare and short, and the visual execution graph is
+      // part of the demo. Express would save money that is not being spent.
+      StateMachineType: 'STANDARD',
+      TracingConfiguration: { Enabled: true },
+      LoggingConfiguration: Match.objectLike({ Level: 'ERROR' }),
+    });
+  });
+
+  /** The state machine definition, with the CloudFormation Fn::Join parts flattened out. */
+  function definition(template: Template): string {
+    const machine = Object.values(template.findResources('AWS::StepFunctions::StateMachine'))[0];
+    return JSON.stringify(machine.Properties.DefinitionString);
+  }
+
+  test('the tasks run in order and merge under the contract result paths', () => {
+    const body = definition(synth());
+    for (const [state, resultPath] of [
+      ['Redact', '$.redaction'],
+      ['Judge', '$.judgement'],
+      ['Score', '$.score'],
+      ['Debrief', '$.debrief'],
+    ]) {
+      expect(body).toContain(`\\"${state}\\"`);
+      expect(body).toContain(`\\"ResultPath\\":\\"${resultPath}\\"`);
+    }
+    expect(body).toContain('\\"StartAt\\":\\"Redact\\"');
+  });
+
+  test('a debrief failure still finishes with the score, a scoring failure does not', () => {
+    // Text-to-speech falling over must never throw away a real score: the learner loses the
+    // audio and keeps the band. Redact, judge and score failures are a different story.
+    const body = definition(synth());
+    expect(body).toContain('FinishWithoutDebrief');
+    expect(body).toContain('FinishFailed');
+    for (const [state, task] of [
+      ['RedactFailed', 'redact'],
+      ['JudgeFailed', 'judge'],
+      ['ScoreFailed', 'score'],
+      ['DebriefFailed', 'debrief'],
+    ]) {
+      expect(body).toContain(state);
+      // The Catch writes Step Functions' own {Error, Cause}; the Pass turns it into the
+      // {task, reason} shape the one finish handler is written against.
+      expect(body).toContain(`\\"task\\":\\"${task}\\"`);
+    }
+    expect(body).toContain('\\"reason.$\\":\\"$.error.Cause\\"');
+    expect(body).toContain('\\"ResultPath\\":\\"$.failure\\"');
+  });
+
+  test('transient lambda and bedrock errors are retried with backoff', () => {
+    const body = definition(synth());
+    for (const error of [
+      'Lambda.ServiceException',
+      'Lambda.TooManyRequestsException',
+      'ThrottlingException',
+    ]) {
+      expect(body).toContain(error);
+    }
+    expect(body).toContain('\\"BackoffRate\\":2');
+    // CDK's own six-attempt default is switched off; six retries of a stuck Bedrock call is
+    // past the PRD's 60 second debrief target before the pipeline has even given up.
+    expect(body).not.toContain('\\"MaxAttempts\\":6');
+  });
+
+  test('the redacted transcript expires with the raw one it was made from', () => {
+    const bucket = Object.values(synth().findResources('AWS::S3::Bucket'))[0];
+    const rules: { Prefix: string; ExpirationInDays: number }[] =
+      bucket.Properties.LifecycleConfiguration.Rules;
+    const byPrefix = Object.fromEntries(rules.map((rule) => [rule.Prefix, rule.ExpirationInDays]));
+    expect(byPrefix['drill/redacted/']).toBe(30);
+  });
+
+  test('the compute role may read a debrief and never a raw transcript', () => {
+    const template = synth();
+    const computeRole = Object.entries(template.findResources('AWS::IAM::Role')).find(
+      ([, role]) => role.Properties.RoleName === 'chaukanna-amplify-compute-role',
+    );
+    const computeStatements = Object.values(template.findResources('AWS::IAM::Policy'))
+      .filter((policy) => JSON.stringify(policy.Properties.Roles ?? []).includes(computeRole![0]))
+      .flatMap(
+        (policy) => policy.Properties.PolicyDocument.Statement as { Action: string | string[]; Resource: unknown }[],
+      );
+    expect(
+      computeStatements.some((s) => ([] as string[]).concat(s.Action).includes('s3:GetObject')),
+    ).toBe(true);
+    const resources = JSON.stringify(computeStatements.map((s) => s.Resource));
+    expect(resources).toContain('debrief/*');
+    // Presigning the audio is all it gained. The transcript stays out of reach until Phase 6
+    // adds the policy that can grant it.
+    expect(resources).not.toContain('drill/transcript/');
+    expect(resources).not.toContain('drill/redacted/');
+  });
+
+  test('phase 5 adds no wildcard action anywhere', () => {
+    for (const statement of policyStatements(synth())) {
+      for (const action of ([] as string[]).concat(statement.Action)) {
+        expect(action).not.toBe('*');
+        expect(action.endsWith(':*')).toBe(false);
+      }
+    }
+  });
+
+  test('the outputs tell the agent and the web app what phase 5 created', () => {
+    const outputs = synth().findOutputs('*');
+    expect(outputs.ScoringStateMachineArn.Export.Name).toBe('ChaukannaScoringStateMachineArn');
+    expect(outputs.GuardrailId).toBeDefined();
+    expect(outputs.JudgeModelId.Value).toBe('global.anthropic.claude-haiku-4-5-20251001-v1:0');
+  });
 });

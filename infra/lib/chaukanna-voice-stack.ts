@@ -10,6 +10,11 @@ export interface ChaukannaVoiceStackProps extends cdk.StackProps {
   artifactsBucket: string;
   inviteSigningKeySecretName: string;
   /**
+   * Name of the scoring state machine, which lives in `dataRegion`, not here. Passed rather
+   * than hardcoded so the name exists once, in `ChaukannaStack`, and both stacks agree.
+   */
+  scoringStateMachineName: string;
+  /**
    * The image the runtime serves, e.g. `<account>.dkr.ecr.ap-northeast-1.amazonaws.com/chaukanna-drill:abc123`.
    * Left undefined on the first deploy, which creates the repository and the role and nothing
    * else, because a runtime cannot be created without an image that already exists.
@@ -100,6 +105,18 @@ export class ChaukannaVoiceStack extends cdk.Stack {
       }),
     );
 
+    // Hand a finished drill to Phase 5. The agent starts the execution itself, with its own
+    // role: no call back into the web app and no shared secret. The state machine is in
+    // `ap-south-1` with the rest of the data, so its ARN is rebuilt here from region, account
+    // and name, the same way the table and the bucket are. `StartExecution` only — the agent
+    // may begin a scoring run and may not stop, redrive or inspect one.
+    this.executionRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['states:StartExecution'],
+        resources: [dataArn('states', `stateMachine:${props.scoringStateMachineName}`)],
+      }),
+    );
+
     this.executionRole.addToPolicy(
       new iam.PolicyStatement({
         actions: ['secretsmanager:GetSecretValue'],
@@ -146,6 +163,10 @@ export class ChaukannaVoiceStack extends cdk.Stack {
             TABLE_NAME: props.tableName,
             ARTIFACTS_BUCKET: props.artifactsBucket,
             VOICE_REGION: this.region,
+            SCORING_STATE_MACHINE_ARN: dataArn(
+              'states',
+              `stateMachine:${props.scoringStateMachineName}`,
+            ),
             SESSION_MAX_SECONDS: String(props.sessionMaxSeconds ?? 360),
             SAFE_WORD: props.safeWord ?? 'ROKO',
           },

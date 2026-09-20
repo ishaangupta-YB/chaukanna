@@ -1,0 +1,49 @@
+{
+  "fixture": "safe_word_s4",
+  "modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "promptVersion": "score.judge.v2",
+  "attempts": 1,
+  "flags": {
+    "stayed_on_call": {
+      "fired": false,
+      "evidence": ""
+    },
+    "accepted_secrecy": {
+      "fired": true,
+      "evidence": "theek hai"
+    },
+    "shared_identifier": {
+      "fired": false,
+      "evidence": ""
+    },
+    "agreed_to_move_money": {
+      "fired": false,
+      "evidence": ""
+    },
+    "accepted_authority": {
+      "fired": true,
+      "evidence": "ji"
+    }
+  },
+  "credits": {
+    "independent_verify": {
+      "fired": false,
+      "evidence": ""
+    },
+    "named_helpline": {
+      "fired": false,
+      "evidence": ""
+    },
+    "disconnected_early": {
+      "fired": false,
+      "evidence": "",
+      "computed": true
+    }
+  },
+  "turningPoint": "Yeh confidential matter hai. Call ke dauran kisi se discuss mat kijiye.",
+  "observed": {
+    "score": 20,
+    "band": "at_risk",
+    "rubricVersion": "prd.v1"
+  }
+}

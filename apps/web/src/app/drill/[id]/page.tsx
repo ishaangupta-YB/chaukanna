@@ -39,6 +39,9 @@ export default async function DrillPage({
   const lang = pickLang(langParam, member.language);
   const drill = await getDrill(member.memberId, id);
   const answerable = drill?.state === 'due' || drill?.state === 'session_pending';
+  /** A call that actually happened. `cancelled` and `missed` never produce a debrief. */
+  const hasResult =
+    drill !== null && (drill.state === 'ended' || drill.state === 'scored' || drill.state === 'score_failed');
 
   return (
     <LearnerShell
@@ -54,9 +57,26 @@ export default async function DrillPage({
           <p className="rounded-2xl bg-stone-200 p-5 text-2xl">
             {t(lang, drill ? 'drillEndedBody' : 'drillNone')}
           </p>
+          {/*
+            A drill that ran has a result, or is about to: the debrief screen owns the waiting
+            state and polls for it. Landing here after a call and being offered only "back to my
+            page" would send the learner away from the one thing the call was for.
+          */}
+          {hasResult && (
+            <Link
+              href={`/drill/${drill.drillId}/debrief?lang=${lang}`}
+              className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-emerald-700 px-6 py-3 text-center text-2xl font-bold text-white"
+            >
+              {t(lang, 'debriefOpen')}
+            </Link>
+          )}
           <Link
             href={`/me?lang=${lang}`}
-            className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-emerald-700 px-6 py-3 text-center text-2xl font-bold text-white"
+            className={
+              hasResult
+                ? 'inline-flex min-h-16 items-center justify-center rounded-2xl border-2 border-stone-500 px-6 py-3 text-center text-2xl font-semibold'
+                : 'inline-flex min-h-16 items-center justify-center rounded-2xl bg-emerald-700 px-6 py-3 text-center text-2xl font-bold text-white'
+            }
           >
             {t(lang, 'drillBackHome')}
           </Link>

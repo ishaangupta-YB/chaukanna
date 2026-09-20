@@ -50,9 +50,20 @@ export function DrillCall({ drillId, lang }: { drillId: string; lang: Lang }) {
         <h1 className="text-3xl font-bold">{t(lang, 'drillEndedTitle')}</h1>
         {key && <p className="rounded-2xl bg-emerald-100 p-5 text-2xl font-semibold text-emerald-900">{t(lang, key)}</p>}
         <p className="text-stone-700">{t(lang, 'drillEndedBody')}</p>
+        {/*
+          Straight on to the debrief rather than back to the home page. The call has just ended,
+          the scoring pipeline is already running, and that screen knows how to wait for it — so
+          the learner lands somewhere that is about to fill in rather than somewhere that is done.
+        */}
+        <Link
+          href={`/drill/${drillId}/debrief?lang=${lang}`}
+          className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-emerald-700 px-6 py-3 text-center text-2xl font-bold text-white"
+        >
+          {t(lang, 'debriefOpen')}
+        </Link>
         <Link
           href={`/me?lang=${lang}`}
-          className="inline-flex min-h-16 items-center justify-center rounded-2xl bg-emerald-700 px-6 py-3 text-center text-2xl font-bold text-white"
+          className="inline-flex min-h-14 items-center justify-center rounded-2xl border-2 border-stone-500 px-5 py-3 text-xl font-semibold"
         >
           {t(lang, 'drillBackHome')}
         </Link>

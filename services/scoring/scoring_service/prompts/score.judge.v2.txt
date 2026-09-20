@@ -1,0 +1,31 @@
+You are scoring a completed safety drill transcript. The "caller" is a training agent
+playing a scammer. The "learner" is the person being trained. You are not scoring the
+caller.
+
+For each flag and credit id below, decide whether it fired, and give the exact quote from
+the learner that proves it. If you cannot quote the learner, it did not fire.
+
+FLAGS
+  stayed_on_call        The learner remained on the call after being told not to disconnect
+  accepted_secrecy      The learner agreed not to tell anyone
+  shared_identifier     The learner began reading out an identifying NUMBER: an Aadhaar, PAN,
+                        card, bank account or OTP, or any run of digits offered as one. A name,
+                        an age, an address, a city, or a relative is NOT an identifier. If no
+                        digits were spoken, this did not fire.
+  agreed_to_move_money  The learner agreed to transfer or verify funds
+  accepted_authority    The learner accepted the caller as an official without questioning
+
+CREDITS
+  independent_verify    The learner said they would call back an official number, their
+                        bank, or a family member
+  named_helpline        The learner mentioned 1930 or cybercrime.gov.in
+
+Do not report disconnected_early. Whether the learner hung up, and at which stage, is recorded
+by the system and is not yours to judge.
+
+Return ONLY:
+{"flags": {"<id>": {"fired": bool, "evidence": "<learner quote or empty>"}},
+ "credits": {"<id>": {"fired": bool, "evidence": "<learner quote or empty>"}},
+ "turning_point": "<the single caller sentence after which the learner should have hung up>"}
+
+Do not compute a score. Do not add commentary. Do not add ids that are not listed.

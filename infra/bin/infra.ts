@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
-import { ChaukannaStack } from '../lib/chaukanna-stack';
+import { ChaukannaStack, SCORING_STATE_MACHINE_NAME } from '../lib/chaukanna-stack';
 import { ChaukannaVoiceStack } from '../lib/chaukanna-voice-stack';
 
 const app = new cdk.App();
@@ -51,6 +51,7 @@ new ChaukannaVoiceStack(app, 'ChaukannaVoiceStack', {
   tableName: 'chaukanna',
   artifactsBucket: `chaukanna-artifacts-${account ?? cdk.Aws.ACCOUNT_ID}`,
   inviteSigningKeySecretName: 'chaukanna/invite-signing-key',
+  scoringStateMachineName: SCORING_STATE_MACHINE_NAME,
   containerUri: agentImage,
   description: 'Chaukanna voice path (ECR repository, agent execution role, AgentCore Runtime)',
 });

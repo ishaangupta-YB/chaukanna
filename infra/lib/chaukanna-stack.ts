@@ -4,6 +4,9 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as bedrock from 'aws-cdk-lib/aws-bedrock';
+import * as sfn from 'aws-cdk-lib/aws-stepfunctions';
+import * as tasks from 'aws-cdk-lib/aws-stepfunctions-tasks';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ses from 'aws-cdk-lib/aws-ses';
@@ -41,6 +44,27 @@ const GOOGLE_OAUTH_SECRET_NAME = 'chaukanna/google-oauth';
 /** Nova 2 Sonic is not in `ap-south-1`; the voice path runs in Tokyo. */
 const DEFAULT_VOICE_REGION = 'ap-northeast-1';
 
+/**
+ * The scoring state machine's name, exported because the agent starts it from another region
+ * and another stack, where the ARN has to be rebuilt from account + region + this name.
+ */
+export const SCORING_STATE_MACHINE_NAME = 'chaukanna-scoring';
+
+/**
+ * The judge and the debrief writer. The bare `anthropic.claude-haiku-4-5-...` model id is
+ * rejected with "Invocation with on-demand throughput isn't supported": this family is only
+ * reachable through an inference profile, and the `global.` one is the profile that is ACTIVE
+ * in `ap-south-1`. Verified with a real `converse` call, not remembered.
+ */
+const JUDGE_MODEL_ID = 'global.anthropic.claude-haiku-4-5-20251001-v1:0';
+
+/**
+ * Polly has no `hi-IN` voice at all (`describe-voices --language-code hi-IN` returns nothing).
+ * `Kajal` is `en-IN` with `hi-IN` in `AdditionalLanguageCodes` and is the only Hindi-capable
+ * neural voice, so both languages are this one voice with a different `LanguageCode`.
+ */
+const DEBRIEF_VOICE_ID = 'Kajal';
+
 export class ChaukannaStack extends cdk.Stack {
   public readonly table: dynamodb.Table;
   public readonly artifactsBucket: s3.Bucket;
@@ -52,6 +76,8 @@ export class ChaukannaStack extends cdk.Stack {
   public readonly computeRole: iam.Role;
   public readonly ringFunction: lambda.Function;
   public readonly schedulerInvokeRole: iam.Role;
+  public readonly guardrail: bedrock.CfnGuardrail;
+  public readonly scoringStateMachine: sfn.StateMachine;
 
   constructor(scope: Construct, id: string, props?: ChaukannaStackProps) {
     super(scope, id, props);
@@ -91,6 +117,10 @@ export class ChaukannaStack extends cdk.Stack {
         { prefix: 'consent/', expiration: cdk.Duration.days(365) },
         { prefix: 'drill/audio/', expiration: cdk.Duration.days(7) },
         { prefix: 'drill/transcript/', expiration: cdk.Duration.days(30) },
+        // What the guardrail wrote back after redaction. Same 30 days as the raw transcript it
+        // was made from: a redacted copy that outlived its original would be the longer-lived
+        // record of the same conversation.
+        { prefix: 'drill/redacted/', expiration: cdk.Duration.days(30) },
         { prefix: 'debrief/', expiration: cdk.Duration.days(30) },
       ],
       // Browsers upload with presigned PUTs from our own pages only.
@@ -385,6 +415,352 @@ export class ChaukannaStack extends cdk.Stack {
       });
     }
 
+    // 13. The redaction guardrail.
+    //
+    // Phase 5's first durable write is the redacted transcript, and this is what makes it safe
+    // to write. It runs against the transcript before anything else reads it; if the call fails
+    // the execution fails rather than falling through to storing raw text.
+    //
+    // The PII list below is everything in the Bedrock enum that a digital-arrest script actually
+    // tries to extract. What is *not* in that enum matters more: Bedrock Guardrails has no
+    // India-specific entity types at all — no Aadhaar, no PAN, no UPI — so the two identifiers
+    // this product exists to protect are caught by `regexesConfig` instead. That is not a
+    // stylistic choice; a `piiEntitiesConfig` naming `IN_AADHAAR` is rejected at deploy time.
+    this.guardrail = new bedrock.CfnGuardrail(this, 'DrillRedaction', {
+      name: 'chaukanna-drill-redaction',
+      description: 'Masks identifiers out of a drill transcript before the first durable write',
+      // Required by the API even though nothing here is ever blocked: every policy below
+      // ANONYMIZEs, so these strings should never be seen by a learner.
+      blockedInputMessaging: 'This content cannot be processed.',
+      blockedOutputsMessaging: 'This content cannot be processed.',
+      sensitiveInformationPolicyConfig: {
+        piiEntitiesConfig: [
+          // Money: what a "verify your account" script asks for.
+          { type: 'CREDIT_DEBIT_CARD_NUMBER', action: 'ANONYMIZE' },
+          { type: 'CREDIT_DEBIT_CARD_CVV', action: 'ANONYMIZE' },
+          { type: 'CREDIT_DEBIT_CARD_EXPIRY', action: 'ANONYMIZE' },
+          { type: 'INTERNATIONAL_BANK_ACCOUNT_NUMBER', action: 'ANONYMIZE' },
+          { type: 'US_BANK_ACCOUNT_NUMBER', action: 'ANONYMIZE' },
+          { type: 'SWIFT_CODE', action: 'ANONYMIZE' },
+          // Credentials: PIN and PASSWORD also catch the spoken OTP, which has no entity type.
+          { type: 'PIN', action: 'ANONYMIZE' },
+          { type: 'PASSWORD', action: 'ANONYMIZE' },
+          // Contact details, which the script uses to sound like it already knows the learner.
+          { type: 'NAME', action: 'ANONYMIZE' },
+          { type: 'PHONE', action: 'ANONYMIZE' },
+          { type: 'EMAIL', action: 'ANONYMIZE' },
+          { type: 'ADDRESS', action: 'ANONYMIZE' },
+        ],
+        regexesConfig: [
+          {
+            name: 'aadhaar',
+            description: 'Twelve digit Aadhaar number, spoken or typed in 4-4-4 groups',
+            pattern: '\\b[2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4}\\b',
+            action: 'ANONYMIZE',
+          },
+          {
+            name: 'pan',
+            description: 'Ten character PAN, five letters, four digits, a letter',
+            pattern: '\\b[A-Za-z]{5}[0-9]{4}[A-Za-z]\\b',
+            action: 'ANONYMIZE',
+          },
+          {
+            name: 'long-digit-run',
+            description: 'Six or more digits together: the agent tripwire threshold, applied again at rest',
+            pattern: '\\b[0-9]{6,}\\b',
+            action: 'ANONYMIZE',
+          },
+        ],
+      },
+    });
+
+    // `DRAFT` on purpose. The guardrail is defined here, so DRAFT always *is* the deployed
+    // definition: change a regex, deploy, and the next drill is redacted by the new rule. A
+    // published numbered version would add a second thing to remember to bump, and the failure
+    // mode of forgetting is that a safety fix silently does not apply.
+    const guardrailVersion = 'DRAFT';
+
+    // 14. The five scoring tasks.
+    //
+    // One asset for all five: same source tree, same exclusions, so CDK hashes and uploads it
+    // once. The exclusions are the Phase 4 rule — `Code.fromAsset` installs nothing and ships
+    // whatever is on disk, so tests, caches, lock files and a local virtualenv would all ride
+    // along and make the asset hash follow the developer's machine rather than the source.
+    const scoringCode = lambda.Code.fromAsset(path.join(__dirname, '../../services/scoring'), {
+      exclude: ['tests', '.venv', '**/__pycache__', '*.lock', 'uv.lock', '.pytest_cache', '.ruff_cache'],
+    });
+
+    const scoringEnvironment = {
+      // Not `AWS_REGION`: Lambda reserves that name and CloudFormation rejects the whole stack
+      // over a function that declares it. This is the same region, named differently.
+      DATA_REGION: this.region,
+      TABLE_NAME: this.table.tableName,
+      ARTIFACTS_BUCKET: this.artifactsBucket.bucketName,
+      JUDGE_MODEL_ID,
+      GUARDRAIL_ID: this.guardrail.attrGuardrailId,
+      GUARDRAIL_VERSION: guardrailVersion,
+      DEBRIEF_VOICE_ID,
+    };
+
+    /**
+     * The timeouts below are ceilings for a call that has hung, not a budget. PRD section 12
+     * gives the whole pipeline 60 seconds from session end to a debrief on screen, and in the
+     * normal case each task returns in single digit seconds, so the sum of the ceilings is
+     * deliberately larger than the target while no single stuck task can eat all of it.
+     */
+    const scoringTask = (
+      id: string,
+      functionName: string,
+      handler: string,
+      timeout: cdk.Duration,
+    ) =>
+      new lambda.Function(this, id, {
+        functionName,
+        runtime: lambda.Runtime.PYTHON_3_12,
+        architecture: lambda.Architecture.ARM_64,
+        handler,
+        code: scoringCode,
+        timeout,
+        memorySize: 512,
+        logGroup: new logs.LogGroup(this, `${id}Logs`, {
+          retention: logs.RetentionDays.ONE_MONTH,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+        environment: scoringEnvironment,
+      });
+
+    // Reads the transcript, applies the guardrail, writes the redacted copy back.
+    const redactFunction = scoringTask(
+      'ScoringRedact',
+      'chaukanna-scoring-redact',
+      'scoring_service.handlers.redact_handler',
+      cdk.Duration.seconds(60),
+    );
+    // One Bedrock call, one retry on a parse failure, so it gets the same room as redaction.
+    const judgeFunction = scoringTask(
+      'ScoringJudge',
+      'chaukanna-scoring-judge',
+      'scoring_service.handlers.judge_handler',
+      cdk.Duration.seconds(60),
+    );
+    // Arithmetic. Ten seconds is already generous.
+    const scoreFunction = scoringTask(
+      'ScoringScore',
+      'chaukanna-scoring-score',
+      'scoring_service.handlers.score_handler',
+      cdk.Duration.seconds(10),
+    );
+    // A Bedrock call and then a Polly synthesis of up to 120 words.
+    const debriefFunction = scoringTask(
+      'ScoringDebrief',
+      'chaukanna-scoring-debrief',
+      'scoring_service.handlers.debrief_handler',
+      cdk.Duration.seconds(60),
+    );
+    // Two DynamoDB writes.
+    const finishFunction = scoringTask(
+      'ScoringFinish',
+      'chaukanna-scoring-finish',
+      'scoring_service.handlers.finish_handler',
+      cdk.Duration.seconds(15),
+    );
+
+    // Redact: exactly one guardrail, and the two prefixes it moves text between. It may read the
+    // raw transcript and write the redacted copy, and it may not do the reverse.
+    redactFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['bedrock:ApplyGuardrail'],
+        resources: [this.guardrail.attrGuardrailArn],
+      }),
+    );
+    redactFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:GetObject'],
+        resources: [this.artifactsBucket.arnForObjects('drill/transcript/*')],
+      }),
+    );
+    redactFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:PutObject'],
+        resources: [this.artifactsBucket.arnForObjects('drill/redacted/*')],
+      }),
+    );
+
+    /**
+     * Invoking a `global.` inference profile takes two resources, and this is the thing that
+     * fails at runtime with a bare AccessDenied if you grant only one. The profile ARN is the
+     * resource named in the call; the foundation-model ARN is what the profile routes *to*, and
+     * a global profile may route the request to a model in any region, so pinning that second
+     * ARN to `ap-south-1` denies exactly the requests the profile was chosen for. The region
+     * field is the wildcard, never the model id.
+     */
+    const judgeModelResources = [
+      `arn:${cdk.Aws.PARTITION}:bedrock:${this.region}:${this.account}:inference-profile/${JUDGE_MODEL_ID}`,
+      `arn:${cdk.Aws.PARTITION}:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-*`,
+    ];
+
+    judgeFunction.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: judgeModelResources }),
+    );
+    // The judge reads the redacted transcript and only the redacted transcript. Nothing in the
+    // scoring path after redaction is allowed near `drill/transcript/`.
+    judgeFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:GetObject'],
+        resources: [this.artifactsBucket.arnForObjects('drill/redacted/*')],
+      }),
+    );
+
+    // Score gets no AWS permissions at all, beyond the logs every Lambda writes. That is the
+    // point of the task: the model classifies, code counts, and the counting is a pure function
+    // of the judgement it was handed. Nothing to read means nothing to get wrong and nothing to
+    // leak, and it is why the determinism test is meaningful.
+
+    debriefFunction.addToRolePolicy(
+      new iam.PolicyStatement({ actions: ['bedrock:InvokeModel'], resources: judgeModelResources }),
+    );
+    debriefFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['polly:SynthesizeSpeech'],
+        resources: ['*'], // Polly has no resource level permissions; AWS requires "*" here
+      }),
+    );
+    debriefFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:PutObject'],
+        resources: [this.artifactsBucket.arnForObjects('debrief/*')],
+      }),
+    );
+
+    // Finish writes the SCORE row and moves the drill to `scored` or `score_failed`. PutItem is
+    // for the score row, UpdateItem for the conditional state transition, GetItem to read the
+    // drill it is transitioning. No DeleteItem, no Query: it touches rows it was told about.
+    finishFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+        resources: [this.table.tableArn],
+      }),
+    );
+
+    // 15. The pipeline.
+    //
+    // Standard rather than Express, deliberately: the runs are short and rare (one per drill),
+    // and the visual execution graph is part of the demo. Express would save money that is not
+    // being spent and lose the picture.
+    // `retryOnServiceExceptions` is switched off on every task below and replaced by this one
+    // block. CDK's default adds six attempts of its own, which on a stuck Bedrock call is well
+    // past the 60 second debrief target before the pipeline has even given up.
+    const transient = {
+      errors: [
+        'Lambda.ServiceException',
+        'Lambda.AWSLambdaException',
+        'Lambda.SdkClientException',
+        'Lambda.TooManyRequestsException',
+        'ThrottlingException',
+      ],
+      interval: cdk.Duration.seconds(2),
+      maxAttempts: 2,
+      backoffRate: 2,
+    };
+
+    /**
+     * A `Catch` writes Step Functions' own `{Error, Cause}` shape, which says nothing about
+     * which task produced it. These Pass states turn that into the `{task, reason}` the finish
+     * handler is written against, so one handler covers all three failure shapes.
+     */
+    const markFailed = (id: string, task: string) =>
+      new sfn.Pass(this, id, {
+        parameters: { task, reason: sfn.JsonPath.stringAt('$.error.Cause') },
+        resultPath: '$.failure',
+      });
+
+    const finishFailed = new tasks.LambdaInvoke(this, 'FinishFailed', {
+      lambdaFunction: finishFunction,
+      payloadResponseOnly: true,
+      retryOnServiceExceptions: false,
+    });
+    // Separate state, same Lambda. A debrief failure is not a scoring failure: the score exists,
+    // it is real, and it is written. The learner loses the audio and gets the generic debrief.
+    const finishWithoutDebrief = new tasks.LambdaInvoke(this, 'FinishWithoutDebrief', {
+      lambdaFunction: finishFunction,
+      payloadResponseOnly: true,
+      retryOnServiceExceptions: false,
+    });
+
+    const finish = new tasks.LambdaInvoke(this, 'Finish', {
+      lambdaFunction: finishFunction,
+      payloadResponseOnly: true,
+      retryOnServiceExceptions: false,
+    }).addRetry(transient);
+
+    const debrief = new tasks.LambdaInvoke(this, 'Debrief', {
+      lambdaFunction: debriefFunction,
+      payloadResponseOnly: true,
+      retryOnServiceExceptions: false,
+      resultPath: '$.debrief',
+    })
+      .addRetry(transient)
+      .addCatch(markFailed('DebriefFailed', 'debrief').next(finishWithoutDebrief), {
+        resultPath: '$.error',
+      });
+
+    const score = new tasks.LambdaInvoke(this, 'Score', {
+      lambdaFunction: scoreFunction,
+      payloadResponseOnly: true,
+      retryOnServiceExceptions: false,
+      resultPath: '$.score',
+    })
+      .addRetry(transient)
+      .addCatch(markFailed('ScoreFailed', 'score').next(finishFailed), { resultPath: '$.error' });
+
+    const judge = new tasks.LambdaInvoke(this, 'Judge', {
+      lambdaFunction: judgeFunction,
+      payloadResponseOnly: true,
+      retryOnServiceExceptions: false,
+      resultPath: '$.judgement',
+    })
+      .addRetry(transient)
+      .addCatch(markFailed('JudgeFailed', 'judge').next(finishFailed), { resultPath: '$.error' });
+
+    const redact = new tasks.LambdaInvoke(this, 'Redact', {
+      lambdaFunction: redactFunction,
+      payloadResponseOnly: true,
+      retryOnServiceExceptions: false,
+      resultPath: '$.redaction',
+    })
+      .addRetry(transient)
+      .addCatch(markFailed('RedactFailed', 'redact').next(finishFailed), { resultPath: '$.error' });
+
+    const scoringLogGroup = new logs.LogGroup(this, 'ScoringStateMachineLogs', {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    this.scoringStateMachine = new sfn.StateMachine(this, 'Scoring', {
+      stateMachineName: SCORING_STATE_MACHINE_NAME,
+      stateMachineType: sfn.StateMachineType.STANDARD,
+      definitionBody: sfn.DefinitionBody.fromChainable(
+        redact.next(judge).next(score).next(debrief).next(finish),
+      ),
+      // A drill that has already ended is not urgent, but an execution that never ends is a
+      // row stuck in `ended` forever, so the whole run has an outer bound too.
+      timeout: cdk.Duration.minutes(5),
+      tracingEnabled: true,
+      logs: { destination: scoringLogGroup, level: sfn.LogLevel.ERROR },
+    });
+
+    // 17. What a route handler may do with a debrief.
+    //
+    // The audio is written by the debrief Lambda and read by nobody else server side; the web
+    // app only ever presigns it for the learner's own player. Read, in one prefix. The table
+    // grants the compute role already holds in section 8 cover the score row.
+    this.computeRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ['s3:GetObject'],
+        resources: [this.artifactsBucket.arnForObjects('debrief/*')],
+      }),
+    );
+
     // Tag everything in stack
     cdk.Tags.of(this).add('project', 'chaukanna');
 
@@ -439,6 +815,27 @@ export class ChaukannaStack extends cdk.Stack {
       value: this.schedulerInvokeRole.roleArn,
       description: 'Set as SCHEDULER_INVOKE_ROLE_ARN in the web app: passed as a schedule target role',
       exportName: 'ChaukannaSchedulerInvokeRoleArn',
+    });
+
+    new cdk.CfnOutput(this, 'ScoringStateMachineArn', {
+      value: this.scoringStateMachine.stateMachineArn,
+      description: 'The agent starts one execution of this per finished drill',
+      exportName: 'ChaukannaScoringStateMachineArn',
+    });
+
+    new cdk.CfnOutput(this, 'GuardrailId', {
+      value: this.guardrail.attrGuardrailId,
+      description: 'Bedrock guardrail applied to a transcript before the first durable write',
+    });
+
+    new cdk.CfnOutput(this, 'GuardrailVersion', {
+      value: guardrailVersion,
+      description: 'DRAFT: the guardrail is defined in CDK, so DRAFT is always what is deployed',
+    });
+
+    new cdk.CfnOutput(this, 'JudgeModelId', {
+      value: JUDGE_MODEL_ID,
+      description: 'Inference profile id used by the judge and the debrief writer',
     });
 
     new cdk.CfnOutput(this, 'AwsRegion', {

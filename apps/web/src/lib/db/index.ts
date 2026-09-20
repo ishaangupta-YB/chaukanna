@@ -13,5 +13,6 @@ export {
   markDrillMissed,
   putDrill,
 } from './drills';
+export { getScore, listScores } from './scores';
 export { listDrillEvents, putDrillEvent, type DrillEvent, type DrillEventActor } from './events';
 export { describeTable } from './health';

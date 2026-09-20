@@ -52,6 +52,10 @@ class ServerSettings(BaseModel):
     data_region: str = Field(min_length=1)
     table_name: str = Field(min_length=1)
     artifacts_bucket: str = Field(min_length=1)
+    # Optional on purpose. A local drill and a dev container have no scoring pipeline wired up and
+    # must still run the whole call; without it the drill simply ends unscored, which is the same
+    # degraded outcome as a failed start. It lives in the data region, like the table and bucket.
+    scoring_state_machine_arn: str | None = None
     scenario_id: str = "digital_arrest_v1"
     # Phase 2's decision, carried forward: without the pre-rendered asset the drill still ends on
     # time, it just ends silently. See handoffs/phase2_agent_handoff.md.
@@ -69,6 +73,8 @@ class ServerSettings(BaseModel):
             "table_name": env["TABLE_NAME"],
             "artifacts_bucket": env["ARTIFACTS_BUCKET"],
         }
+        if env.get("SCORING_STATE_MACHINE_ARN"):
+            values["scoring_state_machine_arn"] = env["SCORING_STATE_MACHINE_ARN"]
         if env.get("SCENARIO_ID"):
             values["scenario_id"] = env["SCENARIO_ID"]
         if env.get("ALLOW_MISSING_BREAK_AUDIO"):

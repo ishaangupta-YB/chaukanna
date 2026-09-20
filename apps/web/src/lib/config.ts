@@ -80,4 +80,15 @@ export const config = {
   get isProduction(): boolean {
     return process.env.NODE_ENV === 'production';
   },
+  /**
+   * Judge demo mode: a deliberate authentication bypass, for hackathon judging only.
+   *
+   * Exactly the string "on" turns it on, so a stray "true", "1" or "yes" leaves it off. When it
+   * is off, `/api/demo/*` answers 404 and a demo cookie is ignored completely — a cookie that
+   * leaks out of a demo deployment must be inert everywhere else, including on the deployment
+   * real families use.
+   */
+  get demoMode(): boolean {
+    return process.env.DEMO_MODE === 'on';
+  },
 };
